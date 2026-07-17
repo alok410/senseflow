@@ -1,62 +1,61 @@
-## Goal
 
-Allow one phone number (one user account) to hold multiple roles (admin / secretary / consumer). At login the user picks which role to sign in as; after OTP verification they land on that role's dashboard. Admin can grant or revoke roles per user.
+# Port MERN controllers to Lovable (full backend + frontend)
 
-## Auth flow changes (`src/routes/auth.tsx` + `src/lib/otp.functions.ts`)
+Bring every uploaded controller (auth, user, location, waterRate, secretary, consumer, meter) into the app as TanStack server functions + role-scoped UIs. Auth stays as the existing phone+OTP+role flow (replaces the email/password `auth.controller.js` — MongoDB behavior mapped to Supabase equivalents).
 
-Login becomes a 3-field flow on one screen (still 2 steps):
+## Backend (server functions)
 
-1. Step "phone": Mobile number + **Role** dropdown (Admin / Secretary / Consumer) → Send OTP.
-   - Client passes `{ phone, role }` to `requestLoginOtp`.
-   - Server checks the user exists for that phone AND has that role in `user_roles`. If not → reject with a clear error ("No <role> account for this number") and do NOT send SMS or store an OTP. This prevents SMS spend on invalid combos.
-   - If valid, generate OTP, store in `otp_codes` with the chosen role, send SMS.
-2. Step "otp": Enter 6-digit code → `verifyLoginOtp({ phone, code, role })`.
-   - Server verifies code + role match, mints magiclink `token_hash`, client redeems session.
-   - After sign-in, store the chosen role in `sessionStorage` (`sf_active_role`) so the dashboard router honors it instead of defaulting to highest-priority role.
+Create/extend these files. All admin-only fns re-check role via `has_role('admin')`; secretary fns re-check via `has_role('secretary')` + `secretary_manages_consumer`; RLS enforces the rest.
 
-## Active-role handling
+- `src/lib/locations.functions.ts` — `listLocations`, `createLocation` (unique `code`), `updateLocation`, `deleteLocation` (admin).
+- `src/lib/rates.functions.ts` — `getLatestRate`, `setWaterRate` (admin; inserts new `water_rates` row w/ `effective_from`).
+- `src/lib/secretaries.functions.ts` — `listSecretaries`, `createSecretary` (creates auth user, profile, `secretary` role, `secretary_locations` mappings), `updateSecretary` (name/phone/email/locations), `deleteSecretary` (deactivate profile + remove `secretary` role + clear location mappings).
+- `src/lib/consumers.functions.ts` — `listConsumers` (admin: all; secretary: scoped via `secretary_locations`), `getConsumerById`, `createConsumer` (creates auth user + profile + `consumer` role + `consumer_details` w/ meter_id, serial_number, device_id, location_id), `updateConsumer`, `deactivateConsumer` (soft delete via `profiles.is_active=false`).
+- `src/lib/meter.functions.ts` — `fetchAndStoreLatestReading({ consumerId })`: server-side call to `https://apps.samasth.io:8090/api/Senseflow/Flowmeter/latest?device=<device_id>` using stored `SENSEFLOW_API_TOKEN` secret; converts UTC→IST, dedupes on (consumer_id, reading_date), inserts into `meter_readings`. Also `listReadings({ consumerId })`.
+- `src/lib/me.functions.ts` — `getMe` returns profile + roles + (if consumer) consumer_details, (if secretary) assigned locations.
 
-- `src/hooks/use-session.ts`: add `useActiveRole()` that reads `sf_active_role` from `sessionStorage` (falls back to highest-priority role from `useMyRole`). Clear on sign-out.
-- `src/routes/_authenticated/dashboard.tsx`: redirect based on active role instead of highest.
-- Add a small "Switch role" control in `DashboardLayout` header (visible only if the user has >1 role) that updates `sf_active_role` and navigates to the corresponding dashboard — no re-login needed once signed in.
+## Schema tweaks (single migration)
 
-## Admin: manage roles per user (`src/routes/_authenticated/admin/users.tsx`)
+- Add `SENSEFLOW_API_TOKEN` secret (via secrets tool if not present).
+- Ensure `meter_readings` has a unique index on `(consumer_id, reading_date)` for dedupe.
+- Add `rssi`, `flow_rate`, `last_active` columns to `meter_readings` if missing (currently `reading`, `consumption`, etc. exist — extend to match Senseflow payload).
+- No changes to existing enums/RLS.
 
-- Table row shows all roles as chips (not just the first): `{u.user_roles.map(r => <Badge>{r.role}</Badge>)}`.
-- Add per-row "Manage roles" action → dialog with 3 checkboxes (admin/secretary/consumer). Save calls a new server fn `setUserRoles({ userId, roles[] })`.
-- "Add user" dialog: replace single Role select with multi-select checkboxes (at least one required). `createUser` server fn accepts `roles: AppRole[]` and inserts all of them into `user_roles` (dedup on unique constraint).
+## Frontend
 
-## Server functions (`src/lib/admin.functions.ts`)
+### Admin
+- `admin/locations.tsx` — replace read-only table with full CRUD (add/edit/delete dialogs; code + name + active toggle).
+- `admin/rates.tsx` — add "Set new rate" dialog (rate_per_liter, free_tier_liters, effective_from) that inserts a new row; history table stays.
+- `admin/secretaries.tsx` — full list + Create/Edit/Delete dialogs incl. multi-location assignment (checkbox list of locations).
+- `admin/users.tsx` (consumers section) — extend existing users page OR add `admin/consumers.tsx` with Create/Edit/Deactivate dialogs collecting: full name, phone, email, location, meter_id, serial_number, device_id. Nav gains "Consumers".
+- `admin/invoices.tsx` stays as-is (no controller uploaded for it).
 
-- Update `createUser` input schema: `roles: z.array(roleSchema).min(1)`. After creating auth user, delete default `consumer` row inserted by trigger and insert all requested roles.
-- Add `setUserRoles` (admin-only, same middleware + `has_role` check): delete existing rows for `user_id`, insert the new set. Refuse to leave the caller himself without `admin` (prevent self-lockout).
+### Secretary
+- `secretary/users.tsx` — list consumers filtered by their `secretary_locations`; "Fetch latest reading" button per consumer → calls `fetchAndStoreLatestReading`; view readings history in a drawer.
+- Add `secretary/readings.tsx` — combined recent readings across assigned locations.
 
-## OTP server (`src/lib/otp.functions.ts`)
+### Consumer
+- `consumer/index.tsx` — show profile (name, phone, meter_id, location), latest reading, consumption chart, current rate, estimated bill (consumption × rate with free tier).
+- Add "Refresh reading" button → `fetchAndStoreLatestReading` scoped to self.
 
-- `requestLoginOtp` input: `{ phone, role }`. Before generating OTP:
-  - Look up `profiles.id` by phone. If not found → throw "No account for this number".
-  - Check `user_roles` for `(user_id, role)`. If missing → throw "This number has no <role> access".
-- Store `role` on the `otp_codes` row (add column below).
-- `verifyLoginOtp` input: `{ phone, code, role }`. Enforce the stored row matches phone + role + not consumed + not expired.
+## Mapping notes
 
-## Database migration
+- MongoDB `User(role=…)` → `profiles` + `user_roles` (already in place).
+- `bcrypt` passwords → skipped (phone+OTP auth).
+- `isActive` deactivation → `profiles.is_active=false` (already exists).
+- `locationId` on user → `consumer_details.location_id` / `secretary_locations`.
+- Meter external API token stays server-side; never shipped to browser.
 
-- Add `role app_role NOT NULL` column to `otp_codes` (default `'consumer'` then drop default) so each OTP is bound to the requested role.
-- No other schema change; `user_roles` already supports multiple rows per user (unique on `(user_id, role)`).
+## Out of scope (ask if needed)
 
-## Seeded data
+- Billing/invoice generation logic (no controller provided).
+- Payments controller.
+- Bulk import.
 
-- Grant `+918780488532` all three roles (admin + secretary + consumer) so you can test role-switching immediately.
-- Leave `+917984202894` as consumer only.
+## Deliverables order
 
-## Out of scope
-
-- No change to invoice/reading/rate logic.
-- No change to SMS provider or OTP template.
-- No change to the `_authenticated` gate.
-
-## Technical notes
-
-- `sessionStorage` (not `localStorage`) so closing the tab resets active role; safe for SSR because it's read in `useEffect`/handlers only.
-- `setUserRoles` uses `supabaseAdmin` after verifying caller is admin via `context.supabase.rpc('has_role', ...)`.
-- Migration order per project rules: alter table only (no new table, so no GRANT block needed beyond existing).
+1. Migration (unique index + optional columns).
+2. Server-fn files.
+3. Admin CRUD pages.
+4. Secretary + consumer pages.
+5. Nav updates in `DashboardLayout` nav arrays.
