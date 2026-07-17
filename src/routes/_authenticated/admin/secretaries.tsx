@@ -1,15 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, Loader2 } from "lucide-react";
+import { Plus, Pencil, Trash2, Loader2, Search } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
@@ -27,21 +27,31 @@ type Row = {
   secretary_locations: { location_id: string }[] | null;
 };
 
+const NONE = "__none__";
+const ALL = "__all__";
+
 function AdminSecretaries() {
   const { user } = useSession();
   const { data: profile } = useMyProfile(user);
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Row | null>(null);
-  const [form, setForm] = useState<{ fullName: string; phone: string; email: string; locationIds: string[] }>(
-    { fullName: "", phone: "", email: "", locationIds: [] },
+  const [form, setForm] = useState<{ fullName: string; phone: string; email: string; locationId: string }>(
+    { fullName: "", phone: "", email: "", locationId: NONE },
   );
-  const [editLocs, setEditLocs] = useState<string[]>([]);
+  const [editLoc, setEditLoc] = useState<string>(NONE);
+  const [search, setSearch] = useState("");
+  const [filterLoc, setFilterLoc] = useState<string>(ALL);
 
   const locs = useQuery({
     queryKey: ["all-locations"],
     queryFn: async () => (await supabase.from("locations").select("id, name, code").order("name")).data || [],
   });
+  const locName = useMemo(() => {
+    const m = new Map<string, string>();
+    (locs.data || []).forEach((l) => m.set(l.id, `${l.name} (${l.code})`));
+    return m;
+  }, [locs.data]);
 
   const list = useQuery({
     queryKey: ["admin-secretaries"],
@@ -59,13 +69,15 @@ function AdminSecretaries() {
     },
   });
 
-  const toggle = (arr: string[], id: string) => (arr.includes(id) ? arr.filter((x) => x !== id) : [...arr, id]);
-
   const createMut = useMutation({
-    mutationFn: async () => createSecretary({ data: form }),
+    mutationFn: async () => createSecretary({ data: {
+      fullName: form.fullName, phone: form.phone,
+      email: form.email || undefined,
+      locationId: form.locationId === NONE ? null : form.locationId,
+    }}),
     onSuccess: () => {
       toast.success("Secretary created.");
-      setOpen(false); setForm({ fullName: "", phone: "", email: "", locationIds: [] });
+      setOpen(false); setForm({ fullName: "", phone: "", email: "", locationId: NONE });
       qc.invalidateQueries({ queryKey: ["admin-secretaries"] });
     },
     onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "Failed"),
@@ -80,7 +92,7 @@ function AdminSecretaries() {
         email: editing.email ?? undefined,
         phone: editing.phone ?? undefined,
         is_active: editing.is_active,
-        locationIds: editLocs,
+        locationId: editLoc === NONE ? null : editLoc,
       }});
     },
     onSuccess: () => {
@@ -100,9 +112,33 @@ function AdminSecretaries() {
     onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "Failed"),
   });
 
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return (list.data || []).filter((s) => {
+      const locId = s.secretary_locations?.[0]?.location_id ?? null;
+      if (filterLoc !== ALL && locId !== filterLoc) return false;
+      if (!q) return true;
+      return (s.full_name || "").toLowerCase().includes(q)
+        || (s.phone || "").toLowerCase().includes(q)
+        || (s.email || "").toLowerCase().includes(q);
+    });
+  }, [list.data, search, filterLoc]);
+
   return (
     <DashboardLayout navItems={ADMIN_NAV} title="Secretaries" userName={profile?.full_name || null} userPhone={profile?.phone || null}>
-      <div className="mb-4 flex justify-end">
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <div className="relative flex-1 min-w-[220px]">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input className="pl-9" placeholder="Search name, phone, email…" value={search} onChange={(e) => setSearch(e.target.value)} />
+        </div>
+        <Select value={filterLoc} onValueChange={setFilterLoc}>
+          <SelectTrigger className="w-56"><SelectValue placeholder="All locations" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>All locations</SelectItem>
+            <SelectItem value={NONE}>— Unassigned —</SelectItem>
+            {(locs.data || []).map((l) => <SelectItem key={l.id} value={l.id}>{l.name} ({l.code})</SelectItem>)}
+          </SelectContent>
+        </Select>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild><Button><Plus className="mr-2 h-4 w-4" /> Add secretary</Button></DialogTrigger>
           <DialogContent>
@@ -112,16 +148,14 @@ function AdminSecretaries() {
               <div className="space-y-2"><Label>Phone (+91…)</Label><Input value={form.phone} placeholder="+919876543210" onChange={(e) => setForm({ ...form, phone: e.target.value })} required /></div>
               <div className="space-y-2"><Label>Email (optional)</Label><Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
               <div className="space-y-2">
-                <Label>Assigned locations</Label>
-                <div className="max-h-40 space-y-2 overflow-auto rounded-md border p-3">
-                  {(locs.data || []).map((l) => (
-                    <label key={l.id} className="flex items-center gap-2 text-sm">
-                      <Checkbox checked={form.locationIds.includes(l.id)} onCheckedChange={() => setForm({ ...form, locationIds: toggle(form.locationIds, l.id) })} />
-                      {l.name} <span className="text-xs text-muted-foreground">({l.code})</span>
-                    </label>
-                  ))}
-                  {!locs.data?.length && <p className="text-xs text-muted-foreground">No locations yet.</p>}
-                </div>
+                <Label>Assigned location</Label>
+                <Select value={form.locationId} onValueChange={(v) => setForm({ ...form, locationId: v })}>
+                  <SelectTrigger><SelectValue placeholder="Select location" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NONE}>— None —</SelectItem>
+                    {(locs.data || []).map((l) => <SelectItem key={l.id} value={l.id}>{l.name} ({l.code})</SelectItem>)}
+                  </SelectContent>
+                </Select>
               </div>
               <DialogFooter><Button type="submit" disabled={createMut.isPending}>{createMut.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Create</Button></DialogFooter>
             </form>
@@ -134,22 +168,25 @@ function AdminSecretaries() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
-                <tr><th className="px-4 py-3">Name</th><th className="px-4 py-3">Phone</th><th className="px-4 py-3">Locations</th><th className="px-4 py-3">Status</th><th className="px-4 py-3 text-right">Actions</th></tr>
+                <tr><th className="px-4 py-3">Name</th><th className="px-4 py-3">Phone</th><th className="px-4 py-3">Location</th><th className="px-4 py-3">Status</th><th className="px-4 py-3 text-right">Actions</th></tr>
               </thead>
               <tbody className="divide-y">
-                {(list.data || []).map((s) => (
+                {filtered.map((s) => {
+                  const locId = s.secretary_locations?.[0]?.location_id ?? null;
+                  return (
                   <tr key={s.id}>
                     <td className="px-4 py-3 font-medium">{s.full_name || "—"}</td>
                     <td className="px-4 py-3 text-muted-foreground">{s.phone || s.email || "—"}</td>
-                    <td className="px-4 py-3">{s.secretary_locations?.length ?? 0}</td>
+                    <td className="px-4 py-3">{locId ? (locName.get(locId) || "—") : <span className="text-muted-foreground">—</span>}</td>
                     <td className="px-4 py-3">{s.is_active ? <Badge>Active</Badge> : <Badge variant="secondary">Inactive</Badge>}</td>
                     <td className="px-4 py-3 text-right">
-                      <Button size="sm" variant="ghost" onClick={() => { setEditing(s); setEditLocs((s.secretary_locations || []).map((x) => x.location_id)); }}><Pencil className="h-3.5 w-3.5" /></Button>
+                      <Button size="sm" variant="ghost" onClick={() => { setEditing(s); setEditLoc(locId ?? NONE); }}><Pencil className="h-3.5 w-3.5" /></Button>
                       <Button size="sm" variant="ghost" onClick={() => { if (confirm(`Remove secretary role from ${s.full_name || s.phone}?`)) delMut.mutate(s.id); }}><Trash2 className="h-3.5 w-3.5" /></Button>
                     </td>
                   </tr>
-                ))}
-                {!list.data?.length && <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">No secretaries yet.</td></tr>}
+                );
+                })}
+                {!filtered.length && <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">No secretaries found.</td></tr>}
               </tbody>
             </table>
           </div>
@@ -165,15 +202,14 @@ function AdminSecretaries() {
               <div className="space-y-2"><Label>Phone</Label><Input value={editing.phone || ""} onChange={(e) => setEditing({ ...editing, phone: e.target.value })} /></div>
               <div className="space-y-2"><Label>Email</Label><Input type="email" value={editing.email || ""} onChange={(e) => setEditing({ ...editing, email: e.target.value })} /></div>
               <div className="space-y-2">
-                <Label>Assigned locations</Label>
-                <div className="max-h-40 space-y-2 overflow-auto rounded-md border p-3">
-                  {(locs.data || []).map((l) => (
-                    <label key={l.id} className="flex items-center gap-2 text-sm">
-                      <Checkbox checked={editLocs.includes(l.id)} onCheckedChange={() => setEditLocs(toggle(editLocs, l.id))} />
-                      {l.name} <span className="text-xs text-muted-foreground">({l.code})</span>
-                    </label>
-                  ))}
-                </div>
+                <Label>Assigned location</Label>
+                <Select value={editLoc} onValueChange={setEditLoc}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NONE}>— None —</SelectItem>
+                    {(locs.data || []).map((l) => <SelectItem key={l.id} value={l.id}>{l.name} ({l.code})</SelectItem>)}
+                  </SelectContent>
+                </Select>
               </div>
               <DialogFooter><Button type="submit" disabled={updateMut.isPending}>{updateMut.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save</Button></DialogFooter>
             </form>

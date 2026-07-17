@@ -17,6 +17,7 @@ const createInput = z.object({
   meterId: z.string().trim().max(64).optional(),
   serialNumber: z.string().trim().max(64).optional(),
   deviceId: z.string().trim().max(64).optional(),
+  blockId: z.string().trim().max(32).optional(),
   assignedSecretaryId: z.string().uuid().optional().nullable(),
 });
 
@@ -57,6 +58,7 @@ export const createConsumer = createServerFn({ method: "POST" })
       meter_id: data.meterId ?? null,
       serial_number: data.serialNumber ?? null,
       device_id: data.deviceId ?? null,
+      block_id: data.blockId ?? null,
       location_id: data.locationId ?? null,
       assigned_secretary_id: data.assignedSecretaryId ?? null,
       connection_date: new Date().toISOString().slice(0, 10),
@@ -75,6 +77,7 @@ const updateInput = z.object({
   meterId: z.string().trim().max(64).optional().nullable(),
   serialNumber: z.string().trim().max(64).optional().nullable(),
   deviceId: z.string().trim().max(64).optional().nullable(),
+  blockId: z.string().trim().max(32).optional().nullable(),
   assignedSecretaryId: z.string().uuid().optional().nullable(),
 });
 
@@ -100,6 +103,7 @@ export const updateConsumer = createServerFn({ method: "POST" })
     if (data.meterId !== undefined) d.meter_id = data.meterId;
     if (data.serialNumber !== undefined) d.serial_number = data.serialNumber;
     if (data.deviceId !== undefined) d.device_id = data.deviceId;
+    if (data.blockId !== undefined) d.block_id = data.blockId;
     if (data.assignedSecretaryId !== undefined) d.assigned_secretary_id = data.assignedSecretaryId;
     if (Object.keys(d).length) {
       const { error } = await supabaseAdmin.from("consumer_details")

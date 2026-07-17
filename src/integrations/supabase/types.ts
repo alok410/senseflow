@@ -18,6 +18,7 @@ export type Database = {
         Row: {
           account_type: Database["public"]["Enums"]["account_type"]
           assigned_secretary_id: string | null
+          block_id: string | null
           connection_date: string
           created_at: string
           device_id: string | null
@@ -31,6 +32,7 @@ export type Database = {
         Insert: {
           account_type?: Database["public"]["Enums"]["account_type"]
           assigned_secretary_id?: string | null
+          block_id?: string | null
           connection_date?: string
           created_at?: string
           device_id?: string | null
@@ -44,6 +46,7 @@ export type Database = {
         Update: {
           account_type?: Database["public"]["Enums"]["account_type"]
           assigned_secretary_id?: string | null
+          block_id?: string | null
           connection_date?: string
           created_at?: string
           device_id?: string | null
