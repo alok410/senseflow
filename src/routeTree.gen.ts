@@ -16,6 +16,7 @@ import { Route as AuthenticatedDashboardRouteImport } from './routes/_authentica
 import { Route as AuthenticatedSecretaryIndexRouteImport } from './routes/_authenticated/secretary/index'
 import { Route as AuthenticatedConsumerIndexRouteImport } from './routes/_authenticated/consumer/index'
 import { Route as AuthenticatedAdminIndexRouteImport } from './routes/_authenticated/admin/index'
+import { Route as AuthenticatedSecretaryUsersRouteImport } from './routes/_authenticated/secretary/users'
 import { Route as AuthenticatedAdminUsersRouteImport } from './routes/_authenticated/admin/users'
 import { Route as AuthenticatedAdminSecretariesRouteImport } from './routes/_authenticated/admin/secretaries'
 import { Route as AuthenticatedAdminRatesRouteImport } from './routes/_authenticated/admin/rates'
@@ -59,6 +60,12 @@ const AuthenticatedAdminIndexRoute = AuthenticatedAdminIndexRouteImport.update({
   path: '/admin/',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedSecretaryUsersRoute =
+  AuthenticatedSecretaryUsersRouteImport.update({
+    id: '/secretary/users',
+    path: '/secretary/users',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedAdminUsersRoute = AuthenticatedAdminUsersRouteImport.update({
   id: '/admin/users',
   path: '/admin/users',
@@ -104,6 +111,7 @@ export interface FileRoutesByFullPath {
   '/admin/rates': typeof AuthenticatedAdminRatesRoute
   '/admin/secretaries': typeof AuthenticatedAdminSecretariesRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
+  '/secretary/users': typeof AuthenticatedSecretaryUsersRoute
   '/admin/': typeof AuthenticatedAdminIndexRoute
   '/consumer/': typeof AuthenticatedConsumerIndexRoute
   '/secretary/': typeof AuthenticatedSecretaryIndexRoute
@@ -118,6 +126,7 @@ export interface FileRoutesByTo {
   '/admin/rates': typeof AuthenticatedAdminRatesRoute
   '/admin/secretaries': typeof AuthenticatedAdminSecretariesRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
+  '/secretary/users': typeof AuthenticatedSecretaryUsersRoute
   '/admin': typeof AuthenticatedAdminIndexRoute
   '/consumer': typeof AuthenticatedConsumerIndexRoute
   '/secretary': typeof AuthenticatedSecretaryIndexRoute
@@ -134,6 +143,7 @@ export interface FileRoutesById {
   '/_authenticated/admin/rates': typeof AuthenticatedAdminRatesRoute
   '/_authenticated/admin/secretaries': typeof AuthenticatedAdminSecretariesRoute
   '/_authenticated/admin/users': typeof AuthenticatedAdminUsersRoute
+  '/_authenticated/secretary/users': typeof AuthenticatedSecretaryUsersRoute
   '/_authenticated/admin/': typeof AuthenticatedAdminIndexRoute
   '/_authenticated/consumer/': typeof AuthenticatedConsumerIndexRoute
   '/_authenticated/secretary/': typeof AuthenticatedSecretaryIndexRoute
@@ -150,6 +160,7 @@ export interface FileRouteTypes {
     | '/admin/rates'
     | '/admin/secretaries'
     | '/admin/users'
+    | '/secretary/users'
     | '/admin/'
     | '/consumer/'
     | '/secretary/'
@@ -164,6 +175,7 @@ export interface FileRouteTypes {
     | '/admin/rates'
     | '/admin/secretaries'
     | '/admin/users'
+    | '/secretary/users'
     | '/admin'
     | '/consumer'
     | '/secretary'
@@ -179,6 +191,7 @@ export interface FileRouteTypes {
     | '/_authenticated/admin/rates'
     | '/_authenticated/admin/secretaries'
     | '/_authenticated/admin/users'
+    | '/_authenticated/secretary/users'
     | '/_authenticated/admin/'
     | '/_authenticated/consumer/'
     | '/_authenticated/secretary/'
@@ -241,6 +254,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/secretary/users': {
+      id: '/_authenticated/secretary/users'
+      path: '/secretary/users'
+      fullPath: '/secretary/users'
+      preLoaderRoute: typeof AuthenticatedSecretaryUsersRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/admin/users': {
       id: '/_authenticated/admin/users'
       path: '/admin/users'
@@ -294,6 +314,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAdminRatesRoute: typeof AuthenticatedAdminRatesRoute
   AuthenticatedAdminSecretariesRoute: typeof AuthenticatedAdminSecretariesRoute
   AuthenticatedAdminUsersRoute: typeof AuthenticatedAdminUsersRoute
+  AuthenticatedSecretaryUsersRoute: typeof AuthenticatedSecretaryUsersRoute
   AuthenticatedAdminIndexRoute: typeof AuthenticatedAdminIndexRoute
   AuthenticatedConsumerIndexRoute: typeof AuthenticatedConsumerIndexRoute
   AuthenticatedSecretaryIndexRoute: typeof AuthenticatedSecretaryIndexRoute
@@ -307,6 +328,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAdminRatesRoute: AuthenticatedAdminRatesRoute,
   AuthenticatedAdminSecretariesRoute: AuthenticatedAdminSecretariesRoute,
   AuthenticatedAdminUsersRoute: AuthenticatedAdminUsersRoute,
+  AuthenticatedSecretaryUsersRoute: AuthenticatedSecretaryUsersRoute,
   AuthenticatedAdminIndexRoute: AuthenticatedAdminIndexRoute,
   AuthenticatedConsumerIndexRoute: AuthenticatedConsumerIndexRoute,
   AuthenticatedSecretaryIndexRoute: AuthenticatedSecretaryIndexRoute,
