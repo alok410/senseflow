@@ -16,7 +16,7 @@ const createInput = z.object({
   fullName: z.string().trim().min(1).max(120),
   phone: phoneSchema,
   email: z.string().trim().email().max(255).optional().or(z.literal("").transform(() => undefined)),
-  locationIds: z.array(z.string().uuid()).default([]),
+  locationId: z.string().uuid().nullable().optional(),
 });
 
 export const createSecretary = createServerFn({ method: "POST" })
@@ -49,10 +49,9 @@ export const createSecretary = createServerFn({ method: "POST" })
       .eq("id", uid);
     await supabaseAdmin.from("user_roles").delete().eq("user_id", uid);
     await supabaseAdmin.from("user_roles").insert({ user_id: uid, role: "secretary" });
-    if (data.locationIds.length) {
-      await supabaseAdmin.from("secretary_locations").insert(
-        data.locationIds.map((location_id) => ({ secretary_id: uid, location_id })),
-      );
+    if (data.locationId) {
+      await supabaseAdmin.from("secretary_locations")
+        .insert({ secretary_id: uid, location_id: data.locationId });
     }
     return { id: uid };
   });
@@ -62,7 +61,7 @@ const updateInput = z.object({
   fullName: z.string().trim().min(1).max(120).optional(),
   email: z.string().trim().email().max(255).optional().or(z.literal("").transform(() => undefined)),
   phone: phoneSchema.optional(),
-  locationIds: z.array(z.string().uuid()).optional(),
+  locationId: z.string().uuid().nullable().optional(),
   is_active: z.boolean().optional(),
 });
 
@@ -82,12 +81,11 @@ export const updateSecretary = createServerFn({ method: "POST" })
       const { error } = await supabaseAdmin.from("profiles").update(patch as any).eq("id", data.userId);
       if (error) throw new Error(error.message);
     }
-    if (data.locationIds) {
+    if (data.locationId !== undefined) {
       await supabaseAdmin.from("secretary_locations").delete().eq("secretary_id", data.userId);
-      if (data.locationIds.length) {
-        const { error } = await supabaseAdmin.from("secretary_locations").insert(
-          data.locationIds.map((location_id) => ({ secretary_id: data.userId, location_id })),
-        );
+      if (data.locationId) {
+        const { error } = await supabaseAdmin.from("secretary_locations")
+          .insert({ secretary_id: data.userId, location_id: data.locationId });
         if (error) throw new Error(error.message);
       }
     }
