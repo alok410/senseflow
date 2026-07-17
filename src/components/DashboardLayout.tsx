@@ -1,6 +1,6 @@
 import { type ReactNode, useState } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { Droplets, Menu, X, LogOut } from "lucide-react";
+import { Droplets, Menu, X, LogOut, UserCog } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -8,6 +8,8 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -15,6 +17,7 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { useSession, useMyRoles, useActiveRole, type AppRole } from "@/hooks/use-session";
 
 export interface NavItem {
   label: string;
@@ -34,6 +37,9 @@ export function DashboardLayout({ children, navItems, title, userName, userPhone
   const qc = useQueryClient();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { user } = useSession();
+  const { data: roles } = useMyRoles(user);
+  const { activeRole, setActiveRole } = useActiveRole(roles);
 
   const initials = (userName || userPhone || "U")
     .split(" ")
@@ -45,9 +51,21 @@ export function DashboardLayout({ children, navItems, title, userName, userPhone
   const handleLogout = async () => {
     await qc.cancelQueries();
     qc.clear();
+    if (typeof window !== "undefined") {
+      window.sessionStorage.removeItem("sf_active_role");
+    }
     await supabase.auth.signOut();
     toast.success("Signed out.");
     navigate({ to: "/auth", replace: true });
+  };
+
+  const switchRole = (r: AppRole) => {
+    if (r === activeRole) return;
+    setActiveRole(r);
+    qc.clear();
+    if (r === "admin") navigate({ to: "/admin", replace: true });
+    else if (r === "secretary") navigate({ to: "/secretary", replace: true });
+    else navigate({ to: "/consumer", replace: true });
   };
 
   return (
@@ -94,6 +112,25 @@ export function DashboardLayout({ children, navItems, title, userName, userPhone
                   )}
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
+                {roles && roles.length > 1 && activeRole && (
+                  <>
+                    <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+                      <UserCog className="mr-2 inline h-3.5 w-3.5" />
+                      Switch role
+                    </DropdownMenuLabel>
+                    <DropdownMenuRadioGroup
+                      value={activeRole}
+                      onValueChange={(v) => switchRole(v as AppRole)}
+                    >
+                      {roles.map((r) => (
+                        <DropdownMenuRadioItem key={r} value={r} className="capitalize">
+                          {r}
+                        </DropdownMenuRadioItem>
+                      ))}
+                    </DropdownMenuRadioGroup>
+                    <DropdownMenuSeparator />
+                  </>
+                )}
                 <DropdownMenuItem onClick={handleLogout}>
                   <LogOut className="mr-2 h-4 w-4" />
                   Sign out
