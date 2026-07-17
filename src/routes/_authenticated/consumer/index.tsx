@@ -1,22 +1,37 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
-import { Gauge, IndianRupee, FileText, Wallet } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { Gauge, IndianRupee, FileText, Wallet, RefreshCw, Loader2 } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { StatsCard } from "@/components/StatsCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useSession, useMyProfile } from "@/hooks/use-session";
+import { fetchAndStoreLatestReading } from "@/lib/meter.functions";
+import { CONSUMER_NAV } from "@/lib/nav";
 
 export const Route = createFileRoute("/_authenticated/consumer/")({
   component: ConsumerDashboard,
 });
 
-const navItems = [{ label: "Dashboard", href: "/consumer" }];
-
 function ConsumerDashboard() {
   const { user } = useSession();
   const { data: profile } = useMyProfile(user);
+  const qc = useQueryClient();
+
+  const refreshMut = useMutation({
+    mutationFn: async () => {
+      if (!user) throw new Error("No session");
+      return fetchAndStoreLatestReading({ data: { consumerId: user.id } });
+    },
+    onSuccess: (r) => {
+      toast.success(r.skipped ? "Already up to date." : "Reading refreshed.");
+      qc.invalidateQueries({ queryKey: ["consumer-dashboard"] });
+    },
+    onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "Failed"),
+  });
 
   const data = useQuery({
     queryKey: ["consumer-dashboard", user?.id],
@@ -69,11 +84,17 @@ function ConsumerDashboard() {
 
   return (
     <DashboardLayout
-      navItems={navItems}
+      navItems={CONSUMER_NAV}
       title={`Hi${profile?.full_name ? `, ${profile.full_name}` : ""}`}
       userName={profile?.full_name || null}
       userPhone={profile?.phone || null}
     >
+      <div className="mb-4 flex justify-end">
+        <Button size="sm" variant="outline" onClick={() => refreshMut.mutate()} disabled={refreshMut.isPending}>
+          {refreshMut.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+          Refresh reading
+        </Button>
+      </div>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatsCard
           label="Last reading"

@@ -22,20 +22,11 @@ import { Loader2, Plus, Pencil } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useSession, useMyProfile, type AppRole } from "@/hooks/use-session";
 import { createUser, setUserRoles } from "@/lib/admin.functions";
+import { ADMIN_NAV } from "@/lib/nav";
 
 export const Route = createFileRoute("/_authenticated/admin/users")({
   component: AdminUsers,
 });
-
-const navItems = [
-  { label: "Dashboard", href: "/admin" },
-  { label: "Users", href: "/admin/users" },
-  { label: "Secretaries", href: "/admin/secretaries" },
-  { label: "Locations", href: "/admin/locations" },
-  { label: "Rates", href: "/admin/rates" },
-  { label: "Invoices", href: "/admin/invoices" },
-  { label: "Analytics", href: "/admin/analytics" },
-];
 
 const ALL_ROLES: AppRole[] = ["admin", "secretary", "consumer"];
 
@@ -104,7 +95,7 @@ function AdminUsers() {
 
   return (
     <DashboardLayout
-      navItems={navItems}
+      navItems={ADMIN_NAV}
       title="All users"
       userName={profile?.full_name || null}
       userPhone={profile?.phone || null}

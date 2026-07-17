@@ -164,39 +164,51 @@ export type Database = {
           consumer_id: string
           consumption: number
           created_at: string
+          flow_rate: number | null
           id: string
+          last_active: string | null
           meter_id: string
           notes: string | null
           previous_reading: number
           reading: number
           reading_date: string
           recorded_by: string | null
+          rssi: number | null
+          serial_number: string | null
           source: Database["public"]["Enums"]["reading_source"]
         }
         Insert: {
           consumer_id: string
           consumption?: number
           created_at?: string
+          flow_rate?: number | null
           id?: string
+          last_active?: string | null
           meter_id: string
           notes?: string | null
           previous_reading?: number
           reading: number
           reading_date?: string
           recorded_by?: string | null
+          rssi?: number | null
+          serial_number?: string | null
           source?: Database["public"]["Enums"]["reading_source"]
         }
         Update: {
           consumer_id?: string
           consumption?: number
           created_at?: string
+          flow_rate?: number | null
           id?: string
+          last_active?: string | null
           meter_id?: string
           notes?: string | null
           previous_reading?: number
           reading?: number
           reading_date?: string
           recorded_by?: string | null
+          rssi?: number | null
+          serial_number?: string | null
           source?: Database["public"]["Enums"]["reading_source"]
         }
         Relationships: []

@@ -5,20 +5,11 @@ import { DashboardLayout } from "@/components/DashboardLayout";
 import { StatsCard } from "@/components/StatsCard";
 import { supabase } from "@/integrations/supabase/client";
 import { useSession, useMyProfile } from "@/hooks/use-session";
+import { ADMIN_NAV } from "@/lib/nav";
 
 export const Route = createFileRoute("/_authenticated/admin/")({
   component: AdminDashboard,
 });
-
-const navItems = [
-  { label: "Dashboard", href: "/admin" },
-  { label: "Users", href: "/admin/users" },
-  { label: "Secretaries", href: "/admin/secretaries" },
-  { label: "Locations", href: "/admin/locations" },
-  { label: "Rates", href: "/admin/rates" },
-  { label: "Invoices", href: "/admin/invoices" },
-  { label: "Analytics", href: "/admin/analytics" },
-];
 
 function AdminDashboard() {
   const { user } = useSession();
@@ -60,7 +51,7 @@ function AdminDashboard() {
 
   return (
     <DashboardLayout
-      navItems={navItems}
+      navItems={ADMIN_NAV}
       title="Admin dashboard"
       userName={profile?.full_name || null}
       userPhone={profile?.phone || null}
