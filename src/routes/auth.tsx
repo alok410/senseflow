@@ -40,17 +40,31 @@ function AuthPage() {
   const sendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     const p = normalizePhone(phone);
+    console.log("[auth] Send OTP clicked", { rawPhone: phone, normalized: p });
     if (!/^\+\d{8,15}$/.test(p)) {
+      console.warn("[auth] Invalid phone format", p);
       toast.error("Enter a valid phone number in international format (e.g. +919876543210).");
       return;
     }
     setLoading(true);
+    const startedAt = performance.now();
+    console.log("[auth] Calling requestLoginOtp…", { phone: p });
     try {
-      await requestLoginOtp({ data: { phone: p } });
+      const res = await requestLoginOtp({ data: { phone: p } });
+      console.log("[auth] requestLoginOtp success", {
+        phone: p,
+        durationMs: Math.round(performance.now() - startedAt),
+        response: res,
+      });
       setPhone(p);
       setStep("otp");
       toast.success("OTP sent to your phone.");
     } catch (err) {
+      console.error("[auth] requestLoginOtp failed", {
+        phone: p,
+        durationMs: Math.round(performance.now() - startedAt),
+        error: err,
+      });
       toast.error(err instanceof Error ? err.message : "Failed to send OTP.");
     } finally {
       setLoading(false);
