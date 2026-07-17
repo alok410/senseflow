@@ -21,6 +21,7 @@ import { Route as AuthenticatedAdminSecretariesRouteImport } from './routes/_aut
 import { Route as AuthenticatedAdminRatesRouteImport } from './routes/_authenticated/admin/rates'
 import { Route as AuthenticatedAdminLocationsRouteImport } from './routes/_authenticated/admin/locations'
 import { Route as AuthenticatedAdminInvoicesRouteImport } from './routes/_authenticated/admin/invoices'
+import { Route as AuthenticatedAdminAnalyticsRouteImport } from './routes/_authenticated/admin/analytics'
 
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
@@ -86,11 +87,18 @@ const AuthenticatedAdminInvoicesRoute =
     path: '/admin/invoices',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedAdminAnalyticsRoute =
+  AuthenticatedAdminAnalyticsRouteImport.update({
+    id: '/admin/analytics',
+    path: '/admin/analytics',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/admin/analytics': typeof AuthenticatedAdminAnalyticsRoute
   '/admin/invoices': typeof AuthenticatedAdminInvoicesRoute
   '/admin/locations': typeof AuthenticatedAdminLocationsRoute
   '/admin/rates': typeof AuthenticatedAdminRatesRoute
@@ -104,6 +112,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/auth': typeof AuthRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/admin/analytics': typeof AuthenticatedAdminAnalyticsRoute
   '/admin/invoices': typeof AuthenticatedAdminInvoicesRoute
   '/admin/locations': typeof AuthenticatedAdminLocationsRoute
   '/admin/rates': typeof AuthenticatedAdminRatesRoute
@@ -119,6 +128,7 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteRouteWithChildren
   '/auth': typeof AuthRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
+  '/_authenticated/admin/analytics': typeof AuthenticatedAdminAnalyticsRoute
   '/_authenticated/admin/invoices': typeof AuthenticatedAdminInvoicesRoute
   '/_authenticated/admin/locations': typeof AuthenticatedAdminLocationsRoute
   '/_authenticated/admin/rates': typeof AuthenticatedAdminRatesRoute
@@ -134,6 +144,7 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/dashboard'
+    | '/admin/analytics'
     | '/admin/invoices'
     | '/admin/locations'
     | '/admin/rates'
@@ -147,6 +158,7 @@ export interface FileRouteTypes {
     | '/'
     | '/auth'
     | '/dashboard'
+    | '/admin/analytics'
     | '/admin/invoices'
     | '/admin/locations'
     | '/admin/rates'
@@ -161,6 +173,7 @@ export interface FileRouteTypes {
     | '/_authenticated'
     | '/auth'
     | '/_authenticated/dashboard'
+    | '/_authenticated/admin/analytics'
     | '/_authenticated/admin/invoices'
     | '/_authenticated/admin/locations'
     | '/_authenticated/admin/rates'
@@ -263,11 +276,19 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminInvoicesRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/admin/analytics': {
+      id: '/_authenticated/admin/analytics'
+      path: '/admin/analytics'
+      fullPath: '/admin/analytics'
+      preLoaderRoute: typeof AuthenticatedAdminAnalyticsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
   }
 }
 
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
+  AuthenticatedAdminAnalyticsRoute: typeof AuthenticatedAdminAnalyticsRoute
   AuthenticatedAdminInvoicesRoute: typeof AuthenticatedAdminInvoicesRoute
   AuthenticatedAdminLocationsRoute: typeof AuthenticatedAdminLocationsRoute
   AuthenticatedAdminRatesRoute: typeof AuthenticatedAdminRatesRoute
@@ -280,6 +301,7 @@ interface AuthenticatedRouteRouteChildren {
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
+  AuthenticatedAdminAnalyticsRoute: AuthenticatedAdminAnalyticsRoute,
   AuthenticatedAdminInvoicesRoute: AuthenticatedAdminInvoicesRoute,
   AuthenticatedAdminLocationsRoute: AuthenticatedAdminLocationsRoute,
   AuthenticatedAdminRatesRoute: AuthenticatedAdminRatesRoute,
