@@ -27,15 +27,19 @@ function buildSmsUrl(params: { phone: string; message: string }) {
   if (!apiKey || !senderId || !templateId) {
     throw new Error("SMS provider is not configured.");
   }
-  const url = new URL("https://smsfortius.work/V2/apikey.php");
-  url.searchParams.set("apikey", apiKey);
-  url.searchParams.set("senderid", senderId);
-  url.searchParams.set("templateid", templateId);
-  url.searchParams.set("number", params.phone);
-  // Postman URL includes `message` twice — replicate exactly.
-  url.searchParams.append("message", params.message);
-  url.searchParams.append("message", params.message);
-  return url.toString();
+  // Build the query string manually so the phone `+` stays literal (URLSearchParams
+  // encodes it as %2B, which this provider's naive parser rejects with
+  // `code: "007", description: "No numbers found!"`).
+  const enc = (v: string) => encodeURIComponent(v);
+  const qs = [
+    `apikey=${enc(apiKey)}`,
+    `senderid=${enc(senderId)}`,
+    `templateid=${enc(templateId)}`,
+    `number=${params.phone}`, // keep the leading + literal
+    `message=${enc(params.message)}`,
+    `message=${enc(params.message)}`, // Postman URL includes `message` twice
+  ].join("&");
+  return `https://smsfortius.work/V2/apikey.php?${qs}`;
 }
 
 export const requestLoginOtp = createServerFn({ method: "POST" })
