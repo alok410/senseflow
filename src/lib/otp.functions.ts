@@ -71,7 +71,34 @@ export const requestLoginOtp = createServerFn({ method: "POST" })
     // (per user request — same URL as their Postman test, with full logs).
     const message = buildMessage(code);
     const smsUrl = buildSmsUrl({ phone: data.phone, message });
-    return { ok: true, otp: code, message, smsUrl };
+
+    const redactedUrl = smsUrl.replace(/(apikey=)[^&]+/, "$1***");
+    const startedAt = Date.now();
+    console.log("[sms:server] fetching…", { url: redactedUrl });
+    let smsStatus = 0;
+    let smsBody = "";
+    try {
+      const res = await fetch(smsUrl, { method: "GET" });
+      smsStatus = res.status;
+      smsBody = await res.text().catch(() => "");
+      console.log("[sms:server] response", {
+        status: smsStatus,
+        ok: res.ok,
+        durationMs: Date.now() - startedAt,
+        body: smsBody,
+      });
+      if (!res.ok) {
+        throw new Error(`SMS provider returned ${smsStatus}`);
+      }
+    } catch (err) {
+      console.error("[sms:server] failed", {
+        durationMs: Date.now() - startedAt,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      throw new Error("Failed to send OTP. Please try again.");
+    }
+
+    return { ok: true, smsStatus, message };
   });
 
 export const verifyLoginOtp = createServerFn({ method: "POST" })
