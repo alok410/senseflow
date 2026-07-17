@@ -55,11 +55,23 @@ function AuthPage() {
     const startedAt = performance.now();
     console.log("[auth] Calling requestLoginOtp…", { phone: p });
     try {
-      const res = await requestLoginOtp({ data: { phone: p } });
+      const res = (await requestLoginOtp({ data: { phone: p } })) as {
+        ok: boolean;
+        smsStatus: number;
+        smsResponseRaw: string;
+        message: string;
+      };
+      let smsResponse: unknown = res.smsResponseRaw;
+      try {
+        smsResponse = res.smsResponseRaw ? JSON.parse(res.smsResponseRaw) : null;
+      } catch {
+        // keep raw string
+      }
       console.log("[auth] requestLoginOtp response", {
         phone: p,
         durationMs: Math.round(performance.now() - startedAt),
         smsStatus: res.smsStatus,
+        smsResponse,
         message: res.message,
       });
       setPhone(p);

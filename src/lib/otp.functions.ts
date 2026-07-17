@@ -82,10 +82,12 @@ export const requestLoginOtp = createServerFn({ method: "POST" })
     console.log("[sms:server] fetching…", { url: redactedUrl });
     let smsStatus = 0;
     let smsBody = "";
+    let smsResponseRaw: string = "";
     try {
-      const res = await fetch(smsUrl, { method: "GET" });
+      const res = await fetch(smsUrl, { method: "POST" });
       smsStatus = res.status;
       smsBody = await res.text().catch(() => "");
+      smsResponseRaw = smsBody;
       console.log("[sms:server] response", {
         status: smsStatus,
         ok: res.ok,
@@ -103,7 +105,12 @@ export const requestLoginOtp = createServerFn({ method: "POST" })
       throw new Error("Failed to send OTP. Please try again.");
     }
 
-    return { ok: true, smsStatus, message };
+    return {
+      ok: true,
+      smsStatus,
+      smsResponseRaw,
+      message,
+    };
   });
 
 export const verifyLoginOtp = createServerFn({ method: "POST" })
