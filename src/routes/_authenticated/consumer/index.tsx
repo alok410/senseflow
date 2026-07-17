@@ -1,12 +1,28 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Gauge, IndianRupee, FileText, Wallet, RefreshCw, Loader2 } from "lucide-react";
+import { format, parseISO, startOfMonth, subDays } from "date-fns";
+import {
+  Gauge, IndianRupee, FileText, Wallet, RefreshCw, Loader2, Gift,
+  TrendingUp, BarChart3, Clock, Droplets, CreditCard,
+} from "lucide-react";
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+} from "recharts";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { StatsCard } from "@/components/StatsCard";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from "@/components/ui/table";
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { useSession, useMyProfile } from "@/hooks/use-session";
 import { fetchAndStoreLatestReading } from "@/lib/meter.functions";
@@ -21,6 +37,21 @@ function ConsumerDashboard() {
   const { data: profile } = useMyProfile(user);
   const qc = useQueryClient();
 
+  const [quick, setQuick] = useState<7 | 15 | 30 | 0>(30);
+  const [start, setStart] = useState<string>(format(subDays(new Date(), 30), "yyyy-MM-dd"));
+  const [end, setEnd] = useState<string>(format(new Date(), "yyyy-MM-dd"));
+  const setRange = (d: 7 | 15 | 30) => {
+    setQuick(d);
+    setStart(format(subDays(new Date(), d), "yyyy-MM-dd"));
+    setEnd(format(new Date(), "yyyy-MM-dd"));
+  };
+
+  const [payOpen, setPayOpen] = useState(false);
+  const [rechargeOpen, setRechargeOpen] = useState(false);
+  const [selectedInvoice, setSelectedInvoice] = useState<string | null>(null);
+  const [rechargeAmount, setRechargeAmount] = useState("500");
+  const [payMethod, setPayMethod] = useState<"online" | "prepaid">("online");
+
   const refreshMut = useMutation({
     mutationFn: async () => {
       if (!user) throw new Error("No session");
@@ -29,58 +60,95 @@ function ConsumerDashboard() {
     onSuccess: (r) => {
       toast.success(r.skipped ? "Already up to date." : "Reading refreshed.");
       qc.invalidateQueries({ queryKey: ["consumer-dashboard"] });
+      qc.invalidateQueries({ queryKey: ["consumer-readings"] });
     },
     onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "Failed"),
   });
 
-  const data = useQuery({
+  const meta = useQuery({
     queryKey: ["consumer-dashboard", user?.id],
     enabled: !!user,
     queryFn: async () => {
-      const [readings, invoices, balance, payments] = await Promise.all([
-        supabase
-          .from("meter_readings")
-          .select("*")
+      const [details, invoices, balance, monthReadings, rate] = await Promise.all([
+        supabase.from("consumer_details").select("meter_id, serial_number, device_id, block_id, location_id, locations(name, code)").eq("user_id", user!.id).maybeSingle(),
+        supabase.from("invoices").select("*").eq("consumer_id", user!.id).order("created_at", { ascending: false }).limit(10),
+        supabase.from("prepaid_balances").select("balance").eq("consumer_id", user!.id).maybeSingle(),
+        supabase.from("meter_readings").select("consumption, reading, reading_date")
           .eq("consumer_id", user!.id)
-          .order("reading_date", { ascending: false })
-          .limit(5),
-        supabase
-          .from("invoices")
-          .select("*")
-          .eq("consumer_id", user!.id)
-          .order("created_at", { ascending: false })
-          .limit(5),
-        supabase.from("prepaid_balances").select("*").eq("consumer_id", user!.id).maybeSingle(),
-        supabase.from("payments").select("amount").eq("consumer_id", user!.id),
+          .gte("reading_date", format(startOfMonth(new Date()), "yyyy-MM-dd"))
+          .order("reading_date", { ascending: false }),
+        supabase.from("water_rates").select("*").order("effective_from", { ascending: false }).limit(1).maybeSingle(),
       ]);
-      const lastReading = readings.data?.[0];
-      const latestInvoice = invoices.data?.[0];
-      const pendingAmount = (invoices.data || [])
-        .filter((i) => i.status !== "paid")
-        .reduce((s, i) => s + Number(i.total_amount || 0), 0);
-      const totalPaid = (payments.data || []).reduce((s, p) => s + Number(p.amount || 0), 0);
+      const pending = (invoices.data || []).filter((i) => i.status !== "paid");
+      const pendingAmount = pending.reduce((s, i) => s + Number(i.total_amount || 0), 0);
+      const thisMonthTotal = (monthReadings.data || []).reduce((s, r) => s + Number(r.consumption || 0), 0);
+      const latestReading = monthReadings.data?.[0];
+      const freeTier = Number(rate.data?.free_tier_liters || 0);
+      const ratePerLiter = Number(rate.data?.rate_per_liter || 0);
+      const thisMonthChargeable = Math.max(0, thisMonthTotal - freeTier);
+      const thisMonthBill = thisMonthChargeable * ratePerLiter;
       return {
-        readings: readings.data || [],
+        details: details.data,
         invoices: invoices.data || [],
-        lastReading,
-        latestInvoice,
+        pending,
         pendingAmount,
-        totalPaid,
-        balance: balance.data?.balance ?? 0,
+        balance: Number(balance.data?.balance || 0),
+        thisMonthTotal,
+        thisMonthChargeable,
+        thisMonthBill,
+        freeTier,
+        ratePerLiter,
+        latestReading,
       };
     },
   });
 
-  const s = data.data;
+  const readings = useQuery({
+    queryKey: ["consumer-readings", user?.id, start, end],
+    enabled: !!user,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("meter_readings")
+        .select("id, reading, previous_reading, consumption, reading_date, source")
+        .eq("consumer_id", user!.id)
+        .gte("reading_date", start)
+        .lte("reading_date", `${end}T23:59:59.999Z`)
+        .order("reading_date", { ascending: true });
+      if (error) throw error;
+      return data || [];
+    },
+  });
 
-  const statusColor = (status: string) => {
-    switch (status) {
-      case "paid": return "default";
-      case "pending": return "secondary";
-      case "overdue": return "destructive";
-      default: return "outline";
-    }
-  };
+  const analysis = useMemo(() => {
+    const rows = readings.data || [];
+    if (!rows.length) return { total: 0, avg: 0, min: 0, max: 0, count: 0, chargeable: 0, bill: 0 };
+    const c = rows.map((r) => Number(r.consumption || 0));
+    const total = c.reduce((a, b) => a + b, 0);
+    const free = meta.data?.freeTier || 0;
+    const rate = meta.data?.ratePerLiter || 0;
+    const chargeable = Math.max(0, total - free);
+    return {
+      total, avg: Math.round(total / c.length),
+      min: Math.min(...c), max: Math.max(...c),
+      count: c.length, chargeable, bill: chargeable * rate,
+    };
+  }, [readings.data, meta.data]);
+
+  const chartData = (readings.data || []).map((r) => ({
+    date: r.reading_date,
+    label: format(parseISO(r.reading_date), "dd MMM"),
+    consumption: Number(r.consumption || 0),
+  }));
+
+  const s = meta.data;
+  const selectedInvoiceData = s?.invoices.find((i) => i.id === selectedInvoice);
+  const canPayWithPrepaid = !!selectedInvoiceData && (s?.balance || 0) >= Number(selectedInvoiceData.total_amount || 0);
+
+  const statusBadge = (status: string) => (
+    <Badge variant={status === "paid" ? "default" : status === "overdue" ? "destructive" : "secondary"}>
+      {status}
+    </Badge>
+  );
 
   return (
     <DashboardLayout
@@ -89,87 +157,238 @@ function ConsumerDashboard() {
       userName={profile?.full_name || null}
       userPhone={profile?.phone || null}
     >
-      <div className="mb-4 flex justify-end">
-        <Button size="sm" variant="outline" onClick={() => refreshMut.mutate()} disabled={refreshMut.isPending}>
-          {refreshMut.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-          Refresh reading
-        </Button>
+      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="text-sm text-muted-foreground">
+          {s?.details?.meter_id && <>Meter ID: <span className="font-mono">{s.details.meter_id}</span></>}
+          {s?.details?.block_id && <> · Block <span className="font-mono">{s.details.block_id}</span></>}
+          {s?.details?.locations?.name && <> · {s.details.locations.name}</>}
+        </div>
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={() => refreshMut.mutate()} disabled={refreshMut.isPending || !s?.details?.device_id}>
+            {refreshMut.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+            Refresh reading
+          </Button>
+          <Button size="sm" onClick={() => setRechargeOpen(true)}>
+            <CreditCard className="mr-2 h-4 w-4" /> Recharge
+          </Button>
+        </div>
       </div>
+
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatsCard label="Free tier" value={`${(s?.freeTier || 0).toLocaleString("en-IN")} L`} icon={Gift} />
         <StatsCard
-          label="Last reading"
-          value={s?.lastReading ? `${Number(s.lastReading.reading).toLocaleString("en-IN")} L` : "—"}
-          hint={s?.lastReading ? new Date(s.lastReading.reading_date).toLocaleDateString() : undefined}
+          label="Latest reading"
+          value={s?.latestReading ? `${Number(s.latestReading.reading).toLocaleString("en-IN")} L` : "—"}
+          hint={s?.latestReading ? format(new Date(s.latestReading.reading_date), "dd MMM, hh:mm a") : undefined}
           icon={Gauge}
         />
-        <StatsCard
-          label="Latest bill"
-          value={s?.latestInvoice ? `₹${Number(s.latestInvoice.total_amount).toLocaleString("en-IN")}` : "—"}
-          icon={FileText}
-        />
-        <StatsCard
-          label="Pending amount"
-          value={s ? `₹${s.pendingAmount.toLocaleString("en-IN")}` : "—"}
-          icon={IndianRupee}
-          tone="warning"
-        />
-        <StatsCard
-          label="Prepaid balance"
-          value={s ? `₹${Number(s.balance).toLocaleString("en-IN")}` : "—"}
-          icon={Wallet}
-          tone="success"
-        />
+        <StatsCard label="Last consumption" value={s?.latestReading ? `${Number(s.latestReading.consumption || 0).toLocaleString("en-IN")} L` : "—"} icon={TrendingUp} />
+        <StatsCard label="This month usage" value={`${(s?.thisMonthTotal || 0).toLocaleString("en-IN")} L`} icon={BarChart3} tone="success" />
+        <StatsCard label="Chargeable (month)" value={`${(s?.thisMonthChargeable || 0).toLocaleString("en-IN")} L`} icon={Droplets} tone="warning" hint={`After ${(s?.freeTier || 0).toLocaleString("en-IN")}L free`} />
+        <StatsCard label="This month bill" value={`₹${(s?.thisMonthBill || 0).toFixed(2)}`} icon={IndianRupee} tone="success" />
+        <StatsCard label="Pending" value={`₹${(s?.pendingAmount || 0).toLocaleString("en-IN")}`} icon={FileText} tone="warning" />
+        <StatsCard label="Prepaid balance" value={`₹${(s?.balance || 0).toLocaleString("en-IN")}`} icon={Wallet} />
       </div>
 
       <div className="mt-6 grid gap-4 lg:grid-cols-2">
         <Card>
-          <CardHeader><CardTitle>Recent readings</CardTitle></CardHeader>
-          <CardContent>
-            {s?.readings.length ? (
-              <ul className="divide-y">
-                {s.readings.map((r) => (
-                  <li key={r.id} className="flex items-center justify-between py-3 text-sm">
-                    <div>
-                      <div className="font-medium">{Number(r.reading).toLocaleString("en-IN")} L</div>
-                      <div className="text-xs text-muted-foreground">
-                        {new Date(r.reading_date).toLocaleDateString()} · {r.source}
-                      </div>
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      +{Number(r.consumption).toLocaleString("en-IN")} L
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-sm text-muted-foreground">No readings yet.</p>
-            )}
+          <CardHeader>
+            <CardTitle>Consumption history</CardTitle>
+            <CardDescription>Usage over the selected range</CardDescription>
+          </CardHeader>
+          <CardContent className="h-64">
+            {chartData.length ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="label" fontSize={10} />
+                  <YAxis fontSize={10} />
+                  <Tooltip />
+                  <Line type="monotone" dataKey="consumption" stroke="hsl(var(--primary))" strokeWidth={2} />
+                </LineChart>
+              </ResponsiveContainer>
+            ) : <p className="text-sm text-muted-foreground">No consumption data.</p>}
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader><CardTitle>Recent invoices</CardTitle></CardHeader>
-          <CardContent>
+          <CardHeader>
+            <CardTitle>Recent invoices</CardTitle>
+            <CardDescription>Latest bills on your account</CardDescription>
+          </CardHeader>
+          <CardContent className="p-0">
             {s?.invoices.length ? (
-              <ul className="divide-y">
-                {s.invoices.map((i) => (
-                  <li key={i.id} className="flex items-center justify-between py-3 text-sm">
-                    <div>
-                      <div className="font-medium">₹{Number(i.total_amount).toLocaleString("en-IN")}</div>
-                      <div className="text-xs text-muted-foreground">
-                        Due {new Date(i.due_date).toLocaleDateString()}
-                      </div>
-                    </div>
-                    <Badge variant={statusColor(i.status) as any}>{i.status}</Badge>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-sm text-muted-foreground">No invoices yet.</p>
-            )}
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Amount</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {s.invoices.slice(0, 5).map((i) => (
+                    <TableRow key={i.id}>
+                      <TableCell className="text-xs">{new Date(i.created_at).toLocaleDateString()}</TableCell>
+                      <TableCell>
+                        <div className="font-semibold">₹{Number(i.total_amount).toFixed(2)}</div>
+                        <div className="text-xs text-muted-foreground">{Number(i.consumption).toLocaleString("en-IN")}L used</div>
+                      </TableCell>
+                      <TableCell>{statusBadge(i.status)}</TableCell>
+                      <TableCell>
+                        {i.status !== "paid" && (
+                          <Button size="sm" onClick={() => { setSelectedInvoice(i.id); setPayOpen(true); }}>Pay</Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            ) : <p className="p-4 text-sm text-muted-foreground">No invoices yet.</p>}
           </CardContent>
         </Card>
       </div>
+
+      <Card className="mt-6">
+        <CardHeader>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2"><BarChart3 className="h-5 w-5" /> Readings & analysis</CardTitle>
+              <CardDescription>Filter by date range</CardDescription>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Input type="date" value={start} onChange={(e) => { setQuick(0); setStart(e.target.value); }} className="w-40" />
+              <span className="text-xs text-muted-foreground">to</span>
+              <Input type="date" value={end} onChange={(e) => { setQuick(0); setEnd(e.target.value); }} className="w-40" />
+              {([7, 15, 30] as const).map((d) => (
+                <Button key={d} size="sm" variant={quick === d ? "default" : "outline"} onClick={() => setRange(d)}>{d}d</Button>
+              ))}
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-lg border bg-primary/5 p-4">
+              <p className="text-xs text-muted-foreground">Total consumption</p>
+              <p className="text-2xl font-bold text-primary">{analysis.total.toLocaleString("en-IN")} L</p>
+            </div>
+            <div className="rounded-lg border bg-muted/40 p-4">
+              <p className="text-xs text-muted-foreground">Average / reading</p>
+              <p className="text-2xl font-bold">{analysis.avg.toLocaleString("en-IN")} L</p>
+            </div>
+            <div className="rounded-lg border bg-muted/40 p-4">
+              <p className="text-xs text-muted-foreground">Chargeable</p>
+              <p className="text-2xl font-bold">{analysis.chargeable.toLocaleString("en-IN")} L</p>
+              <p className="text-xs text-muted-foreground">After {(s?.freeTier || 0).toLocaleString("en-IN")}L free</p>
+            </div>
+            <div className="rounded-lg border bg-success/5 p-4">
+              <p className="text-xs text-muted-foreground">Estimated bill</p>
+              <p className="text-2xl font-bold">₹{analysis.bill.toFixed(2)}</p>
+            </div>
+          </div>
+
+          {readings.isLoading ? (
+            <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>
+          ) : (readings.data?.length || 0) > 0 ? (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Current</TableHead>
+                  <TableHead>Previous</TableHead>
+                  <TableHead>Consumption</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {[...(readings.data || [])].reverse().map((r) => (
+                  <TableRow key={r.id}>
+                    <TableCell className="text-xs">{format(parseISO(r.reading_date), "dd MMM yyyy, hh:mm a")}</TableCell>
+                    <TableCell className="font-medium">{Number(r.reading).toLocaleString("en-IN")}</TableCell>
+                    <TableCell className="text-muted-foreground">{Number(r.previous_reading).toLocaleString("en-IN")}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className={Number(r.consumption) > (s?.freeTier || Infinity) ? "border-warning text-warning" : ""}>
+                        {Number(r.consumption).toLocaleString("en-IN")} L
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          ) : (
+            <div className="py-8 text-center text-muted-foreground">
+              <Droplets className="mx-auto mb-2 h-10 w-10 opacity-40" />
+              <p className="text-sm">No readings in this range.</p>
+            </div>
+          )}
+
+          {(readings.data?.length || 0) > 0 && (
+            <div className="flex flex-wrap gap-4 border-t pt-4 text-sm">
+              <div className="flex items-center gap-2"><Clock className="h-4 w-4 text-muted-foreground" /><span className="text-muted-foreground">Readings:</span> <Badge variant="secondary">{analysis.count}</Badge></div>
+              <div className="flex items-center gap-2"><span className="text-muted-foreground">Min:</span> <Badge variant="outline">{analysis.min.toLocaleString("en-IN")} L</Badge></div>
+              <div className="flex items-center gap-2"><span className="text-muted-foreground">Max:</span> <Badge variant="outline">{analysis.max.toLocaleString("en-IN")} L</Badge></div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Dialog open={payOpen} onOpenChange={setPayOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Pay invoice</DialogTitle>
+            <DialogDescription>Choose your payment method</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-6 py-4">
+            <p className="text-center text-3xl font-bold text-primary">₹{Number(selectedInvoiceData?.total_amount || 0).toFixed(2)}</p>
+            <Tabs value={payMethod} onValueChange={(v) => setPayMethod(v as "online" | "prepaid")}>
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="online"><CreditCard className="mr-2 h-4 w-4" />Online</TabsTrigger>
+                <TabsTrigger value="prepaid"><Wallet className="mr-2 h-4 w-4" />Prepaid</TabsTrigger>
+              </TabsList>
+              <TabsContent value="online" className="mt-4">
+                <p className="text-center text-sm text-muted-foreground">Secure card / UPI / netbanking.</p>
+              </TabsContent>
+              <TabsContent value="prepaid" className="mt-4 space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Available</span>
+                  <span className="font-semibold">₹{(s?.balance || 0).toFixed(2)}</span>
+                </div>
+                {!canPayWithPrepaid && <p className="text-sm text-destructive">Insufficient balance. Recharge first.</p>}
+              </TabsContent>
+            </Tabs>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPayOpen(false)}>Cancel</Button>
+            <Button
+              disabled={payMethod === "prepaid" && !canPayWithPrepaid}
+              onClick={() => { toast.info("Payment integration coming soon."); setPayOpen(false); }}
+            >
+              {payMethod === "prepaid" ? "Pay from balance" : "Pay now"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={rechargeOpen} onOpenChange={setRechargeOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Recharge prepaid balance</DialogTitle>
+            <DialogDescription>Top up your account</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <Input type="number" min={1} value={rechargeAmount} onChange={(e) => setRechargeAmount(e.target.value)} />
+            <div className="flex flex-wrap gap-2">
+              {[100, 500, 1000, 2000].map((v) => (
+                <Button key={v} size="sm" variant="outline" onClick={() => setRechargeAmount(String(v))}>₹{v}</Button>
+              ))}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRechargeOpen(false)}>Cancel</Button>
+            <Button onClick={() => { toast.info("Recharge gateway coming soon."); setRechargeOpen(false); }}>Recharge ₹{rechargeAmount}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 }
