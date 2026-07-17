@@ -17,6 +17,22 @@ function buildMessage(otp: string) {
   return SMS_TEMPLATE.replace("{#var#}", otp);
 }
 
+function buildSmsUrl(params: { phone: string; message: string }) {
+  const apiKey = process.env.SENSEFLOW_SMS_API_KEY;
+  const senderId = process.env.SENSEFLOW_SMS_SENDER_ID;
+  const templateId = process.env.SENSEFLOW_SMS_TEMPLATE_ID;
+  if (!apiKey || !senderId || !templateId) {
+    throw new Error("SMS provider is not configured.");
+  }
+  const url = new URL("https://smsfortius.work/V2/apikey.php");
+  url.searchParams.set("apikey", apiKey);
+  url.searchParams.set("senderid", senderId);
+  url.searchParams.set("templateid", templateId);
+  url.searchParams.set("number", params.phone);
+  url.searchParams.set("message", params.message);
+  return url.toString();
+}
+
 export const requestLoginOtp = createServerFn({ method: "POST" })
   .inputValidator((data: { phone: string }) => ({ phone: phoneSchema.parse(data.phone) }))
   .handler(async ({ data }) => {
@@ -51,30 +67,11 @@ export const requestLoginOtp = createServerFn({ method: "POST" })
     });
     if (insErr) throw new Error(insErr.message);
 
-    // Send SMS via Senseflow provider
-    const apiKey = process.env.SENSEFLOW_SMS_API_KEY;
-    const senderId = process.env.SENSEFLOW_SMS_SENDER_ID;
-    const templateId = process.env.SENSEFLOW_SMS_TEMPLATE_ID;
-    if (!apiKey || !senderId || !templateId) {
-      throw new Error("SMS provider is not configured.");
-    }
-
+    // Build the SMS payload and let the client hit the provider directly
+    // (per user request — same URL as their Postman test, with full logs).
     const message = buildMessage(code);
-    const url = new URL("https://smsfortius.work/V2/apikey.php");
-    url.searchParams.set("apikey", apiKey);
-    url.searchParams.set("senderid", senderId);
-    url.searchParams.set("templateid", templateId);
-    url.searchParams.set("number", data.phone);
-    url.searchParams.set("message", message);
-
-    const res = await fetch(url.toString(), { method: "GET" });
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      console.error("[sms] send failed", res.status, body);
-      throw new Error("Failed to send OTP. Please try again.");
-    }
-
-    return { ok: true };
+    const smsUrl = buildSmsUrl({ phone: data.phone, message });
+    return { ok: true, otp: code, message, smsUrl };
   });
 
 export const verifyLoginOtp = createServerFn({ method: "POST" })
