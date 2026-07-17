@@ -56,39 +56,12 @@ function AuthPage() {
     console.log("[auth] Calling requestLoginOtp…", { phone: p });
     try {
       const res = await requestLoginOtp({ data: { phone: p } });
-      const redactedUrl = res.smsUrl.replace(/(apikey=)[^&]+/, "$1***");
       console.log("[auth] requestLoginOtp response", {
         phone: p,
         durationMs: Math.round(performance.now() - startedAt),
-        otp: res.otp,
+        smsStatus: res.smsStatus,
         message: res.message,
-        smsUrl: redactedUrl,
       });
-
-      // Hit the Senseflow SMS API directly from the browser (same URL that
-      // works in Postman). Log everything.
-      const smsStartedAt = performance.now();
-      console.log("[sms] fetching…", { method: "GET", url: redactedUrl });
-      try {
-        const smsRes = await fetch(res.smsUrl, { method: "GET" });
-        const smsBody = await smsRes.text().catch(() => "");
-        console.log("[sms] response", {
-          status: smsRes.status,
-          ok: smsRes.ok,
-          durationMs: Math.round(performance.now() - smsStartedAt),
-          body: smsBody,
-        });
-        if (!smsRes.ok) {
-          throw new Error(`SMS provider returned ${smsRes.status}`);
-        }
-      } catch (smsErr) {
-        console.error("[sms] failed", {
-          durationMs: Math.round(performance.now() - smsStartedAt),
-          error: smsErr,
-        });
-        throw smsErr instanceof Error ? smsErr : new Error("SMS send failed");
-      }
-
       setPhone(p);
       setStep("otp");
       toast.success("OTP sent to your phone.");
