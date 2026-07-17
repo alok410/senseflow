@@ -1,42 +1,36 @@
-## Goal
+## Problem
 
-On Send OTP click, hit the Senseflow SMS API from the **browser** (same URL that worked in your Postman test) with the DLT template kept byte-for-byte identical — only the FIRST `{#var#}` swapped with the freshly generated OTP. Log every step in the browser console.
-
-## Flow
-
-1. Click Send OTP → client logs button click + phone.
-2. Client calls server fn `requestLoginOtp({ phone })` — server still owns:
-   - Lookup profile by phone (reject unknown numbers).
-   - Generate 6-digit OTP, hash it, store in `otp_codes` (5-min expiry, max 5 attempts).
-   - Return `{ otp, message, smsUrl }` to the client (this OTP is only for that user's own login — same as showing it in an SMS to them).
-3. Client builds a `fetch(smsUrl)` to `https://smsfortius.work/V2/apikey.php?...` with the exact template. Logs: request URL (API key redacted in logs), status, response body, duration.
-4. Client transitions to OTP step. Verification path is unchanged.
-
-## Template rule
-
-Exactly this string, with only the first `{#var#}` replaced:
+The SMS provider (`smsfortius.work`) does not send `Access-Control-Allow-Origin`, so the browser blocks the request:
 
 ```
-Dear {#var#}, payment for Invoice No. {#var#} related to {#var#} services amounting to Rs.{#var#} was due on {#var#} and is still pending. Kindly pay immediately to avoid service interruption. SENSEFLOW INSTRUMENTS PRIVATE LIMITED.
+No 'Access-Control-Allow-Origin' header is present on the requested resource.
 ```
 
-## Client logs added
+The provider actually returns HTTP 200 (the SMS is likely sent), but the browser refuses to expose the response to JS. Postman worked because Postman ignores CORS. You cannot fix this from the client — the provider must add the header, which we don't control.
 
-- `[auth] Send OTP button clicked` (already added)
-- `[auth] form onSubmit fired`
-- `[auth] Calling requestLoginOtp…`
-- `[auth] requestLoginOtp response` — includes generated OTP, message, redacted URL
-- `[sms] fetching…` with method + URL (API key masked)
-- `[sms] response` with HTTP status, duration, response text
-- `[sms] failed` with error object on network / non-2xx
+## Fix
 
-## Files changed
+Move the SMS `fetch` back to the **server function**. The server has no CORS restrictions and can call the provider directly. Keep the client-side logs and add matching server-side logs so you still see the full flow.
 
-- `src/lib/otp.functions.ts` — `requestLoginOtp` returns `{ otp, message, smsUrl }` instead of sending the SMS server-side.
-- `src/routes/auth.tsx` — after `requestLoginOtp`, do a browser `fetch(smsUrl)` and log everything; keep existing button/submit logs.
+## Changes
 
-## Trade-offs / caveats
+### `src/lib/otp.functions.ts`
+- `requestLoginOtp` performs the `fetch(smsUrl)` server-side again.
+- Add `console.log("[sms:server] fetching…", { url: redactedUrl })`, `[sms:server] response { status, body }`, `[sms:server] failed { error }` — visible in server-function logs.
+- Return `{ ok: true, smsStatus, otpMasked }` to the client (never return the full OTP or the API key). `otpMasked` is e.g. `******` — client just logs that a code was issued.
 
-- **CORS**: The SMS provider may not send `Access-Control-Allow-Origin`. If the browser blocks the fetch, we'll see a CORS error in the log; the fix is to keep the actual send on the server and just log — say the word and I'll flip it back. Your Postman test worked because Postman ignores CORS.
-- **API key exposure**: Calling the provider from the browser puts `SENSEFLOW_SMS_API_KEY` in the URL that any user can read. Postman-style keys are typically fine for you to test with, but for production the send should stay server-side. Confirm you're OK with client-side exposure for now.
-- **Template**: still sent verbatim; only the first placeholder becomes the OTP.
+### `src/routes/auth.tsx`
+- Remove the browser `fetch(smsUrl)` block.
+- Keep the button-click / submit / `requestLoginOtp` request/response logs.
+- Log the server's returned `smsStatus` so the console still shows the outcome of the API hit.
+
+## Result
+
+- No CORS error.
+- SMS is actually delivered (as before your Postman test).
+- Console still shows every step: button click → submit → server call → server-reported SMS status.
+- API key stays server-side (no longer exposed to any visitor of the site).
+
+## Alternative you can ask for later
+
+If you truly want the browser to hit `smsfortius.work` directly, we'd need a same-origin proxy route (`/api/public/sms-proxy`) that forwards the request. That still runs the fetch on the server; it just makes it look client-initiated. Same effect as this plan, more moving parts — say the word if you want it.
