@@ -14,6 +14,7 @@ import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedSecretaryIndexRouteImport } from './routes/_authenticated/secretary/index'
+import { Route as AuthenticatedConsumerIndexRouteImport } from './routes/_authenticated/consumer/index'
 import { Route as AuthenticatedAdminIndexRouteImport } from './routes/_authenticated/admin/index'
 
 const AuthRoute = AuthRouteImport.update({
@@ -41,6 +42,12 @@ const AuthenticatedSecretaryIndexRoute =
     path: '/secretary/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedConsumerIndexRoute =
+  AuthenticatedConsumerIndexRouteImport.update({
+    id: '/consumer/',
+    path: '/consumer/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedAdminIndexRoute = AuthenticatedAdminIndexRouteImport.update({
   id: '/admin/',
   path: '/admin/',
@@ -52,6 +59,7 @@ export interface FileRoutesByFullPath {
   '/auth': typeof AuthRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/admin/': typeof AuthenticatedAdminIndexRoute
+  '/consumer/': typeof AuthenticatedConsumerIndexRoute
   '/secretary/': typeof AuthenticatedSecretaryIndexRoute
 }
 export interface FileRoutesByTo {
@@ -59,6 +67,7 @@ export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/admin': typeof AuthenticatedAdminIndexRoute
+  '/consumer': typeof AuthenticatedConsumerIndexRoute
   '/secretary': typeof AuthenticatedSecretaryIndexRoute
 }
 export interface FileRoutesById {
@@ -68,13 +77,20 @@ export interface FileRoutesById {
   '/auth': typeof AuthRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/admin/': typeof AuthenticatedAdminIndexRoute
+  '/_authenticated/consumer/': typeof AuthenticatedConsumerIndexRoute
   '/_authenticated/secretary/': typeof AuthenticatedSecretaryIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/auth' | '/dashboard' | '/admin/' | '/secretary/'
+  fullPaths:
+    | '/'
+    | '/auth'
+    | '/dashboard'
+    | '/admin/'
+    | '/consumer/'
+    | '/secretary/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/auth' | '/dashboard' | '/admin' | '/secretary'
+  to: '/' | '/auth' | '/dashboard' | '/admin' | '/consumer' | '/secretary'
   id:
     | '__root__'
     | '/'
@@ -82,6 +98,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/_authenticated/dashboard'
     | '/_authenticated/admin/'
+    | '/_authenticated/consumer/'
     | '/_authenticated/secretary/'
   fileRoutesById: FileRoutesById
 }
@@ -128,6 +145,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSecretaryIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/consumer/': {
+      id: '/_authenticated/consumer/'
+      path: '/consumer'
+      fullPath: '/consumer/'
+      preLoaderRoute: typeof AuthenticatedConsumerIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/admin/': {
       id: '/_authenticated/admin/'
       path: '/admin'
@@ -141,12 +165,14 @@ declare module '@tanstack/react-router' {
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedAdminIndexRoute: typeof AuthenticatedAdminIndexRoute
+  AuthenticatedConsumerIndexRoute: typeof AuthenticatedConsumerIndexRoute
   AuthenticatedSecretaryIndexRoute: typeof AuthenticatedSecretaryIndexRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedAdminIndexRoute: AuthenticatedAdminIndexRoute,
+  AuthenticatedConsumerIndexRoute: AuthenticatedConsumerIndexRoute,
   AuthenticatedSecretaryIndexRoute: AuthenticatedSecretaryIndexRoute,
 }
 
