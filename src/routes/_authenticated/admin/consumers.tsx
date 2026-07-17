@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, RefreshCw, Loader2, Search, ArrowUpDown, BarChart3 } from "lucide-react";
+import { Plus, Pencil, Trash2, RefreshCw, Loader2, Search, ArrowUpDown, BarChart3, Sparkles } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useSession, useMyProfile } from "@/hooks/use-session";
-import { createConsumer, updateConsumer, deactivateConsumer } from "@/lib/consumers.functions";
+import { createConsumer, updateConsumer, deleteConsumer, seedDemoConsumers } from "@/lib/consumers.functions";
 import { fetchAndStoreLatestReading } from "@/lib/meter.functions";
 import { ADMIN_NAV } from "@/lib/nav";
 
@@ -145,9 +145,15 @@ function AdminConsumers() {
     onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "Failed"),
   });
 
-  const deactMut = useMutation({
-    mutationFn: async (userId: string) => deactivateConsumer({ data: { userId } }),
-    onSuccess: () => { toast.success("Deactivated."); qc.invalidateQueries({ queryKey: ["admin-consumers"] }); },
+  const deleteMut = useMutation({
+    mutationFn: async (userId: string) => deleteConsumer({ data: { userId } }),
+    onSuccess: () => { toast.success("Consumer deleted."); qc.invalidateQueries({ queryKey: ["admin-consumers"] }); qc.invalidateQueries({ queryKey: ["admin-users"] }); },
+    onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "Failed"),
+  });
+
+  const seedMut = useMutation({
+    mutationFn: async () => seedDemoConsumers({ data: {} }),
+    onSuccess: (r) => { toast.success(`Seeded ${r.created} consumers (${r.skipped} skipped).`); qc.invalidateQueries({ queryKey: ["admin-consumers"] }); },
     onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "Failed"),
   });
 
@@ -172,6 +178,9 @@ function AdminConsumers() {
             {(locs.data || []).map((l) => <SelectItem key={l.id} value={l.id}>{l.name} ({l.code})</SelectItem>)}
           </SelectContent>
         </Select>
+        <Button variant="outline" disabled={seedMut.isPending} onClick={() => { if (confirm("Seed 26 demo consumers with dummy phone numbers?")) seedMut.mutate(); }}>
+          {seedMut.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />} Seed demo
+        </Button>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild><Button><Plus className="mr-2 h-4 w-4" /> Add consumer</Button></DialogTrigger>
           <DialogContent>
@@ -233,7 +242,7 @@ function AdminConsumers() {
                       <Link to="/admin/consumers/$id" params={{ id: c.id }}><Button size="sm" variant="ghost" title="Analysis"><BarChart3 className="h-3.5 w-3.5" /></Button></Link>
                       <Button size="sm" variant="ghost" disabled={fetchMut.isPending || !(c.consumer_details?.meter_id || c.consumer_details?.device_id)} onClick={() => fetchMut.mutate(c.id)} title="Fetch latest reading"><RefreshCw className="h-3.5 w-3.5" /></Button>
                       <Button size="sm" variant="ghost" onClick={() => setEditing(c)}><Pencil className="h-3.5 w-3.5" /></Button>
-                      <Button size="sm" variant="ghost" onClick={() => { if (confirm(`Deactivate ${c.full_name || c.phone}?`)) deactMut.mutate(c.id); }}><Trash2 className="h-3.5 w-3.5" /></Button>
+                      <Button size="sm" variant="ghost" onClick={() => { if (confirm(`Delete ${c.full_name || c.phone}? This removes the user, meter, readings and invoices.`)) deleteMut.mutate(c.id); }}><Trash2 className="h-3.5 w-3.5" /></Button>
                     </td>
                   </tr>
                 ))}
