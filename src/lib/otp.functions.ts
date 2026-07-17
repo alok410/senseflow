@@ -104,12 +104,23 @@ export const requestLoginOtp = createServerFn({ method: "POST" })
       if (!res.ok) {
         throw new Error(`SMS provider returned ${smsStatus}`);
       }
+      // Provider returns HTTP 200 even on failures like "insufficient credit".
+      // Parse the JSON body and surface the real error to the caller.
+      try {
+        const parsed = JSON.parse(smsBody) as { status?: string; description?: string };
+        if (parsed && String(parsed.status).toLowerCase() !== "success") {
+          throw new Error(parsed.description || "SMS provider rejected the request.");
+        }
+      } catch (parseErr) {
+        if (parseErr instanceof Error && parseErr.message.includes("SMS")) throw parseErr;
+        // Body wasn't JSON — treat as opaque success only if HTTP was ok.
+      }
     } catch (err) {
       console.error("[sms:server] failed", {
         durationMs: Date.now() - startedAt,
         error: err instanceof Error ? err.message : String(err),
       });
-      throw new Error("Failed to send OTP. Please try again.");
+      throw new Error(err instanceof Error ? err.message : "Failed to send OTP. Please try again.");
     }
 
     return { ok: true, smsStatus, smsResponseRaw, message };
