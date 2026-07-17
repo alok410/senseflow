@@ -89,10 +89,14 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { property: "og:title", content: "SensorFlow — Smart Water Meter Management" },
       {
         property: "og:description",
-        content: "Smart water meter management for societies and consumers.",
+        content: "SensorFlow — smart water meter management for societies, secretaries, and consumers. Track readings, generate invoices, and manage billing.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
+      { name: "twitter:title", content: "SensorFlow — Smart Water Meter Management" },
+      { name: "twitter:description", content: "SensorFlow — smart water meter management for societies, secretaries, and consumers. Track readings, generate invoices, and manage billing." },
+      { property: "og:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/7165d3c7-5be1-4071-9142-658008ef6fdd" },
+      { name: "twitter:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/7165d3c7-5be1-4071-9142-658008ef6fdd" },
     ],
     links: [
       {
