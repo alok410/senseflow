@@ -5,16 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { useSession, useMyProfile } from "@/hooks/use-session";
-
-const NAV = [
-  { label: "Dashboard", href: "/admin" },
-  { label: "Users", href: "/admin/users" },
-  { label: "Secretaries", href: "/admin/secretaries" },
-  { label: "Locations", href: "/admin/locations" },
-  { label: "Rates", href: "/admin/rates" },
-  { label: "Invoices", href: "/admin/invoices" },
-  { label: "Analytics", href: "/admin/analytics" },
-];
+import { ADMIN_NAV } from "@/lib/nav";
 
 export const Route = createFileRoute("/_authenticated/admin/invoices")({
   component: AdminInvoices,
@@ -32,7 +23,7 @@ function AdminInvoices() {
     },
   });
   return (
-    <DashboardLayout navItems={NAV} title="Invoices" userName={profile?.full_name || null} userPhone={profile?.phone || null}>
+    <DashboardLayout navItems={ADMIN_NAV} title="Invoices" userName={profile?.full_name || null} userPhone={profile?.phone || null}>
       <Card>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
