@@ -42,6 +42,15 @@ function AuthPage() {
     if (session) navigate({ to: "/dashboard", replace: true });
   }, [session, navigate]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("error") === "no-role") {
+      toast.error("Your account has no role assigned. Contact your admin.");
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
+
   const normalizePhone = (raw: string) => {
     const trimmed = raw.trim().replace(/\s+/g, "");
     return trimmed.startsWith("+") ? trimmed : `+${trimmed.replace(/^0+/, "")}`;
