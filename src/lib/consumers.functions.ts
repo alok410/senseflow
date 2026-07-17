@@ -124,3 +124,101 @@ export const deactivateConsumer = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return { ok: true };
   });
+
+export const deleteConsumer = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ userId: z.string().uuid() }).parse(d))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    if (data.userId === context.userId) throw new Error("You cannot delete your own account.");
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error } = await supabaseAdmin.auth.admin.deleteUser(data.userId);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+const DEMO_CONSUMERS: Array<{
+  block: string | null; name: string; meter: string; serial: string | null; email: string;
+}> = [
+  { block: "4",   name: "AMBALAL PATEL",     meter: "USFL_WM0015", serial: "24110200025466", email: "h4@gmail.com" },
+  { block: "14",  name: "DHARTI",            meter: "USFL_WM0023", serial: "24110200025069", email: "h14@gmail.com" },
+  { block: "12",  name: "DHARTI",            meter: "USFL_WM0021", serial: "24100200024057", email: "h12@gmail.com" },
+  { block: "1",   name: "DHARTI",            meter: "USFL_WM0019", serial: "24110200025096", email: "h1@gmail.com" },
+  { block: "17",  name: "DHARTI",            meter: "USFL_WM0018", serial: "24110200024268", email: "h17@gmail.com" },
+  { block: "2",   name: "DHARTI",            meter: "USFL_WM0014", serial: "24110200025450", email: "h2@gmail.com" },
+  { block: "3",   name: "DHARTI",            meter: "USFL_WM0013", serial: "24110200025164", email: "h3@gmail.com" },
+  { block: "35",  name: "DHARTI",            meter: "USFL_WM0012", serial: "24110200024307", email: "h35@gmail.com" },
+  { block: "10",  name: "DHARTI",            meter: "USFL_WM0011", serial: "24110200025129", email: "h10@gmail.com" },
+  { block: "13",  name: "DHARTI",            meter: "USFL_WM0009", serial: "24110200024767", email: "h13@gmail.com" },
+  { block: "27",  name: "DHARTI",            meter: "USFL_WM0008", serial: "24100200024065", email: "h27@gmail.com" },
+  { block: "16",  name: "DHARTI",            meter: "USFL_WM0007", serial: "24110200025540", email: "h16@gmail.com" },
+  { block: "15",  name: "DHARTI",            meter: "USFL_WM0006", serial: "24110200024310", email: "h15@gmail.com" },
+  { block: "18",  name: "DHARTI",            meter: "USFL_WM0002", serial: "24100200023891", email: "h18@gmail.com" },
+  { block: "28",  name: "DHARTI",            meter: "USFL_WM0001", serial: "24110200025386", email: "h28@gmail.com" },
+  { block: "9",   name: "DHARTI",            meter: "USFL_WM0022", serial: "24110200024302", email: "h9@gmail.com" },
+  { block: "26",  name: "DILIP VYAS",        meter: "USFL_WM0003", serial: "24110200024828", email: "h26@gmail.com" },
+  { block: "19",  name: "GIRIRAJ TEJRA",     meter: "USFL_WM0010", serial: "24110200025101", email: "h19@gmail.com" },
+  { block: "11B", name: "JAGDISH PRAJAPTI",  meter: "USFL_WM0024", serial: "24121200033220", email: "h11b@gmail.com" },
+  { block: "11A", name: "JAGDISH PRAJAPTI",  meter: "USFL_WM0004", serial: "24110200025067", email: "h11a@gmail.com" },
+  { block: "20",  name: "MUKESH PATEL",      meter: "USFL_WM0005", serial: "24110200025247", email: "h20@gmail.com" },
+  { block: null,  name: "No Consumer 2",     meter: "USFL_WM0020", serial: null,             email: "hna2@gmail.com" },
+  { block: "8",   name: "R. P. PATEL",       meter: "USFL_WM0016", serial: "24110200025511", email: "h8@gmail.com" },
+  { block: "50",  name: "Test",              meter: "USFL_WM0010", serial: "50",             email: "test@gmail.com" },
+  { block: "7",   name: "V. K. PATEL",       meter: "USFL_WM0017", serial: "24110200025502", email: "h7@gmail.com" },
+  { block: "22",  name: "V.K.PATE",          meter: "USFL_WM0025", serial: "24121200035557", email: "h22@gmail.com" },
+];
+
+export const seedDemoConsumers = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z.object({ locationId: z.string().uuid().optional().nullable() }).parse(d ?? {}),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    let locationId = data.locationId ?? null;
+    if (!locationId) {
+      const { data: loc } = await supabaseAdmin
+        .from("locations").select("id").order("created_at").limit(1).maybeSingle();
+      locationId = loc?.id ?? null;
+    }
+
+    let created = 0, skipped = 0;
+    for (let i = 0; i < DEMO_CONSUMERS.length; i++) {
+      const c = DEMO_CONSUMERS[i];
+      const phone = `+9190000${String(i + 1).padStart(5, "0")}`;
+      const digits = phone.replace(/\D/g, "");
+
+      const { data: dupPhone } = await supabaseAdmin
+        .from("profiles").select("id").eq("phone", phone).maybeSingle();
+      const { data: dupEmail } = await supabaseAdmin
+        .from("profiles").select("id").eq("email", c.email).maybeSingle();
+      if (dupPhone || dupEmail) { skipped++; continue; }
+
+      const { data: u, error: uerr } = await supabaseAdmin.auth.admin.createUser({
+        email: c.email,
+        phone: digits,
+        email_confirm: true,
+        phone_confirm: true,
+        user_metadata: { full_name: c.name },
+      });
+      if (uerr || !u?.user) { skipped++; continue; }
+      const uid = u.user.id;
+
+      await supabaseAdmin.from("profiles")
+        .update({ full_name: c.name, phone, email: c.email }).eq("id", uid);
+      await supabaseAdmin.from("user_roles").delete().eq("user_id", uid);
+      await supabaseAdmin.from("user_roles").insert({ user_id: uid, role: "consumer" });
+      await supabaseAdmin.from("consumer_details").upsert({
+        user_id: uid,
+        meter_id: c.meter,
+        serial_number: c.serial,
+        block_id: c.block,
+        location_id: locationId,
+        connection_date: new Date().toISOString().slice(0, 10),
+      }, { onConflict: "user_id" });
+      created++;
+    }
+    return { created, skipped, total: DEMO_CONSUMERS.length };
+  });
