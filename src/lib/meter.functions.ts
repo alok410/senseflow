@@ -39,8 +39,10 @@ export const fetchAndStoreLatestReading = createServerFn({ method: "POST" })
       .select("device_id, meter_id, serial_number")
       .eq("user_id", data.consumerId).maybeSingle();
     if (dErr) throw new Error(dErr.message);
-    const device = details?.device_id || details?.meter_id;
-    if (!device) throw new Error("This consumer has no device_id or meter_id configured.");
+    // Senseflow API needs the meter identifier (e.g. USFL_WM0003).
+    // Prefer meter_id (matches the MERN model's meterId); fall back to device_id.
+    const device = details?.meter_id || details?.device_id;
+    if (!device) throw new Error("This consumer has no meter_id (or device_id) configured.");
 
     const url = `${SENSEFLOW_BASE}?device=${encodeURIComponent(device)}`;
     const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
