@@ -9,24 +9,26 @@ const createUserInput = z.object({
   fullName: z.string().trim().min(1, "Name required").max(120),
   phone: phoneSchema,
   email: z.string().trim().email().max(255).optional().or(z.literal("").transform(() => undefined)),
-  role: roleSchema,
+  roles: z.array(roleSchema).min(1, "Pick at least one role"),
 });
+
+async function assertAdmin(context: { supabase: any; userId: string }) {
+  const { data: isAdmin, error } = await context.supabase.rpc("has_role", {
+    _user_id: context.userId,
+    _role: "admin",
+  });
+  if (error) throw new Error(error.message);
+  if (!isAdmin) throw new Error("Forbidden");
+}
 
 export const createUser = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => createUserInput.parse(data))
   .handler(async ({ data, context }) => {
-    // Verify caller is admin via RLS-scoped client
-    const { data: isAdmin, error: roleErr } = await context.supabase.rpc("has_role", {
-      _user_id: context.userId,
-      _role: "admin",
-    });
-    if (roleErr) throw new Error(roleErr.message);
-    if (!isAdmin) throw new Error("Forbidden");
+    await assertAdmin(context);
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-    // Phone must be unique
     const { data: dup } = await supabaseAdmin
       .from("profiles")
       .select("id")
@@ -49,19 +51,42 @@ export const createUser = createServerFn({ method: "POST" })
     if (createErr || !created?.user) throw new Error(createErr?.message || "Failed to create user");
     const newId = created.user.id;
 
-    // Trigger handle_new_user() populated profiles + user_roles with defaults; fix them up.
     const { error: upErr } = await supabaseAdmin
       .from("profiles")
       .update({ full_name: data.fullName, phone: data.phone, email: data.email ?? null })
       .eq("id", newId);
     if (upErr) throw new Error(upErr.message);
 
-    // Overwrite role
     await supabaseAdmin.from("user_roles").delete().eq("user_id", newId);
-    const { error: rErr } = await supabaseAdmin
-      .from("user_roles")
-      .insert({ user_id: newId, role: data.role });
+    const rows = data.roles.map((role) => ({ user_id: newId, role }));
+    const { error: rErr } = await supabaseAdmin.from("user_roles").insert(rows);
     if (rErr) throw new Error(rErr.message);
 
     return { id: newId };
+  });
+
+const setRolesInput = z.object({
+  userId: z.string().uuid(),
+  roles: z.array(roleSchema).min(1, "Pick at least one role"),
+});
+
+export const setUserRoles = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((data: unknown) => setRolesInput.parse(data))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context);
+
+    // Prevent self-lockout: if caller is editing themselves, keep admin.
+    if (data.userId === context.userId && !data.roles.includes("admin")) {
+      throw new Error("You cannot remove your own admin role.");
+    }
+
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    await supabaseAdmin.from("user_roles").delete().eq("user_id", data.userId);
+    const rows = data.roles.map((role) => ({ user_id: data.userId, role }));
+    const { error } = await supabaseAdmin.from("user_roles").insert(rows);
+    if (error) throw new Error(error.message);
+
+    return { ok: true };
   });
