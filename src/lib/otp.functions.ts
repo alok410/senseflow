@@ -3,19 +3,16 @@ import { z } from "zod";
 import { createHash, randomInt } from "crypto";
 
 const phoneSchema = z.string().trim().regex(/^\+\d{8,15}$/, "Invalid phone");
+const roleSchema = z.enum(["admin", "secretary", "consumer"]);
 
 function hashCode(code: string, phone: string) {
   return createHash("sha256").update(`${phone}:${code}`).digest("hex");
 }
 
-// DLT-approved template body — kept byte-for-byte identical. Only the FIRST
-// {#var#} is replaced with the OTP; all other placeholders remain literal.
 const SMS_TEMPLATE =
   "Dear {#var#}, payment for Invoice No. {#var#} related to {#var#} services amounting to Rs.{#var#} was due on {#var#} and is still pending. Kindly pay immediately to avoid service interruption. SENSEFLOW INSTRUMENTS PRIVATE LIMITED.";
 
 function buildMessage(otp: string) {
-  // Replace ONLY the first {#var#} with the OTP; the remaining four placeholders
-  // must stay literal to match the approved DLT template.
   return SMS_TEMPLATE.replace("{#var#}", otp);
 }
 
@@ -26,27 +23,26 @@ function buildSmsUrl(params: { phone: string; message: string }) {
   if (!apiKey || !senderId || !templateId) {
     throw new Error("SMS provider is not configured.");
   }
-  // Build the query string manually so the phone `+` stays literal (URLSearchParams
-  // encodes it as %2B, which this provider's naive parser rejects with
-  // `code: "007", description: "No numbers found!"`).
   const enc = (v: string) => encodeURIComponent(v);
   const qs = [
     `apikey=${enc(apiKey)}`,
     `senderid=${enc(senderId)}`,
     `templateid=${enc(templateId)}`,
-    `number=${params.phone}`, // keep the leading + literal
+    `number=${params.phone}`,
     `message=${enc(params.message)}`,
-    `message=${enc(params.message)}`, // Postman URL includes `message` twice
+    `message=${enc(params.message)}`,
   ].join("&");
   return `https://smsfortius.work/V2/apikey.php?${qs}`;
 }
 
 export const requestLoginOtp = createServerFn({ method: "POST" })
-  .inputValidator((data: { phone: string }) => ({ phone: phoneSchema.parse(data.phone) }))
+  .inputValidator((data: { phone: string; role: string }) => ({
+    phone: phoneSchema.parse(data.phone),
+    role: roleSchema.parse(data.role),
+  }))
   .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-    // Only allow login for existing accounts (admin-managed users)
     const { data: profile, error: pErr } = await supabaseAdmin
       .from("profiles")
       .select("id, phone, is_active")
@@ -60,23 +56,31 @@ export const requestLoginOtp = createServerFn({ method: "POST" })
       throw new Error("Account is inactive. Contact your admin.");
     }
 
-    // Generate 6-digit OTP
+    const { data: roleRow, error: rErr } = await supabaseAdmin
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", profile.id)
+      .eq("role", data.role)
+      .maybeSingle();
+    if (rErr) throw new Error(rErr.message);
+    if (!roleRow) {
+      throw new Error(`This number has no ${data.role} access.`);
+    }
+
     const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
     const codeHash = hashCode(code, data.phone);
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
 
-    // Purge old codes for this phone
     await supabaseAdmin.from("otp_codes").delete().eq("phone", data.phone);
 
     const { error: insErr } = await supabaseAdmin.from("otp_codes").insert({
       phone: data.phone,
       code_hash: codeHash,
       expires_at: expiresAt,
+      role: data.role,
     });
     if (insErr) throw new Error(insErr.message);
 
-    // Build the SMS payload and let the client hit the provider directly
-    // (per user request — same URL as their Postman test, with full logs).
     const message = buildMessage(code);
     const smsUrl = buildSmsUrl({ phone: data.phone, message });
 
@@ -85,7 +89,7 @@ export const requestLoginOtp = createServerFn({ method: "POST" })
     console.log("[sms:server] fetching…", { url: redactedUrl });
     let smsStatus = 0;
     let smsBody = "";
-    let smsResponseRaw: string = "";
+    let smsResponseRaw = "";
     try {
       const res = await fetch(smsUrl, { method: "POST" });
       smsStatus = res.status;
@@ -108,31 +112,30 @@ export const requestLoginOtp = createServerFn({ method: "POST" })
       throw new Error("Failed to send OTP. Please try again.");
     }
 
-    return {
-      ok: true,
-      smsStatus,
-      smsResponseRaw,
-      message,
-    };
+    return { ok: true, smsStatus, smsResponseRaw, message };
   });
 
 export const verifyLoginOtp = createServerFn({ method: "POST" })
-  .inputValidator((data: { phone: string; code: string }) => ({
+  .inputValidator((data: { phone: string; code: string; role: string }) => ({
     phone: phoneSchema.parse(data.phone),
     code: z.string().trim().regex(/^\d{6}$/, "Invalid code").parse(data.code),
+    role: roleSchema.parse(data.role),
   }))
   .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     const { data: row, error } = await supabaseAdmin
       .from("otp_codes")
-      .select("id, code_hash, attempts, expires_at")
+      .select("id, code_hash, attempts, expires_at, role")
       .eq("phone", data.phone)
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
     if (error) throw new Error(error.message);
     if (!row) throw new Error("No OTP found. Request a new code.");
+    if (row.role !== data.role) {
+      throw new Error("OTP was issued for a different role. Request a new code.");
+    }
     if (new Date(row.expires_at).getTime() < Date.now()) {
       await supabaseAdmin.from("otp_codes").delete().eq("id", row.id);
       throw new Error("OTP expired. Request a new code.");
@@ -151,7 +154,6 @@ export const verifyLoginOtp = createServerFn({ method: "POST" })
       throw new Error("Incorrect code.");
     }
 
-    // Find the user's auth email
     const { data: profile, error: pErr } = await supabaseAdmin
       .from("profiles")
       .select("id")
@@ -159,6 +161,15 @@ export const verifyLoginOtp = createServerFn({ method: "POST" })
       .maybeSingle();
     if (pErr) throw new Error(pErr.message);
     if (!profile) throw new Error("Account not found.");
+
+    // Re-verify the role still exists
+    const { data: roleRow } = await supabaseAdmin
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", profile.id)
+      .eq("role", data.role)
+      .maybeSingle();
+    if (!roleRow) throw new Error(`This number has no ${data.role} access.`);
 
     const { data: userLookup, error: uErr } = await supabaseAdmin.auth.admin.getUserById(profile.id);
     if (uErr || !userLookup?.user?.email) {
@@ -174,11 +185,11 @@ export const verifyLoginOtp = createServerFn({ method: "POST" })
       throw new Error(linkErr?.message || "Could not issue session.");
     }
 
-    // Consume the OTP
     await supabaseAdmin.from("otp_codes").delete().eq("id", row.id);
 
     return {
       email,
       tokenHash: linkData.properties.hashed_token,
+      role: data.role,
     };
   });

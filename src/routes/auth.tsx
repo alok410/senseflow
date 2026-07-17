@@ -6,9 +6,18 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { useSession } from "@/hooks/use-session";
 import { requestLoginOtp, verifyLoginOtp } from "@/lib/otp.functions";
+
+type Role = "admin" | "secretary" | "consumer";
 
 export const Route = createFileRoute("/auth")({
   head: () => ({
@@ -25,12 +34,9 @@ function AuthPage() {
   const { session } = useSession();
   const [step, setStep] = useState<"phone" | "otp">("phone");
   const [phone, setPhone] = useState("");
+  const [role, setRole] = useState<Role>("consumer");
   const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    console.log("[auth] AuthPage mounted", { path: typeof window !== "undefined" ? window.location.pathname : "(ssr)" });
-  }, []);
 
   useEffect(() => {
     if (session) navigate({ to: "/dashboard", replace: true });
@@ -42,47 +48,19 @@ function AuthPage() {
   };
 
   const sendOtp = async (e: React.FormEvent) => {
-    console.log("[auth] form onSubmit fired", { defaultPrevented: e.defaultPrevented });
     e.preventDefault();
     const p = normalizePhone(phone);
-    console.log("[auth] Send OTP clicked", { rawPhone: phone, normalized: p });
     if (!/^\+\d{8,15}$/.test(p)) {
-      console.warn("[auth] Invalid phone format", p);
       toast.error("Enter a valid phone number in international format (e.g. +919876543210).");
       return;
     }
     setLoading(true);
-    const startedAt = performance.now();
-    console.log("[auth] Calling requestLoginOtp…", { phone: p });
     try {
-      const res = (await requestLoginOtp({ data: { phone: p } })) as {
-        ok: boolean;
-        smsStatus: number;
-        smsResponseRaw: string;
-        message: string;
-      };
-      let smsResponse: unknown = res.smsResponseRaw;
-      try {
-        smsResponse = res.smsResponseRaw ? JSON.parse(res.smsResponseRaw) : null;
-      } catch {
-        // keep raw string
-      }
-      console.log("[auth] requestLoginOtp response", {
-        phone: p,
-        durationMs: Math.round(performance.now() - startedAt),
-        smsStatus: res.smsStatus,
-        smsResponse,
-        message: res.message,
-      });
+      await requestLoginOtp({ data: { phone: p, role } });
       setPhone(p);
       setStep("otp");
-      toast.success("OTP sent to your phone.");
+      toast.success(`OTP sent for ${role} sign-in.`);
     } catch (err) {
-      console.error("[auth] requestLoginOtp failed", {
-        phone: p,
-        durationMs: Math.round(performance.now() - startedAt),
-        error: err,
-      });
       toast.error(err instanceof Error ? err.message : "Failed to send OTP.");
     } finally {
       setLoading(false);
@@ -97,12 +75,15 @@ function AuthPage() {
     }
     setLoading(true);
     try {
-      const { tokenHash } = await verifyLoginOtp({ data: { phone, code: otp } });
+      const { tokenHash } = await verifyLoginOtp({ data: { phone, code: otp, role } });
       const { error } = await supabase.auth.verifyOtp({
         token_hash: tokenHash,
         type: "magiclink",
       });
       if (error) throw new Error(error.message);
+      if (typeof window !== "undefined") {
+        window.sessionStorage.setItem("sf_active_role", role);
+      }
       toast.success("Signed in.");
       navigate({ to: "/dashboard", replace: true });
     } catch (err) {
@@ -124,8 +105,8 @@ function AuthPage() {
             <CardTitle>{step === "phone" ? "Sign in" : "Verify code"}</CardTitle>
             <CardDescription>
               {step === "phone"
-                ? "Enter your mobile number to receive a one-time code."
-                : `Enter the 6-digit code sent to ${phone}.`}
+                ? "Enter your mobile number and pick the role you want to sign in as."
+                : `Enter the 6-digit code sent to ${phone} for ${role} sign-in.`}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -147,17 +128,23 @@ function AuthPage() {
                     Include your country code (e.g. <code>+91</code> for India).
                   </p>
                 </div>
-                <Button
-                  type="submit"
-                  className="w-full"
-                  disabled={loading}
-                  onClick={() =>
-                    console.log("[auth] Send OTP button clicked", {
-                      phoneState: phone,
-                      loading,
-                    })
-                  }
-                >
+                <div className="space-y-2">
+                  <Label>Sign in as</Label>
+                  <Select value={role} onValueChange={(v) => setRole(v as Role)} disabled={loading}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="consumer">Consumer</SelectItem>
+                      <SelectItem value="secretary">Secretary</SelectItem>
+                      <SelectItem value="admin">Admin</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    We'll only send an OTP if this number has that role.
+                  </p>
+                </div>
+                <Button type="submit" className="w-full" disabled={loading}>
                   {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   Send OTP
                 </Button>
@@ -191,7 +178,7 @@ function AuthPage() {
                   }}
                   disabled={loading}
                 >
-                  Change number
+                  Change number or role
                 </Button>
               </form>
             )}
