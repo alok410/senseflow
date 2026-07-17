@@ -1,22 +1,25 @@
-## Goal
+## Problem
 
-Keep the Senseflow SMS template body **byte-for-byte identical** to the DLT-approved text, replacing only the first `{#var#}` with the random 6-digit OTP. The other four `{#var#}` placeholders stay as literal text.
+You clicked "Send OTP" but no `[auth]` logs appear in the browser console and no network request is made. The console snapshot also shows you're on `/` (the landing page), not `/auth`.
 
-## Current state
+Two possible causes:
+1. You're clicking the landing page's "Sign in" / "Get started" button (which just links to `/auth`) and never actually reaching the OTP form.
+2. You are on `/auth` but the form's `onSubmit` isn't firing (e.g. HTML5 `required` validation blocking, or the handler binding is off).
 
-`src/lib/otp.functions.ts` → `buildMessage(otp)` already does this:
+## Diagnostic changes (temporary, one round)
 
-```
-Dear <OTP>, payment for Invoice No. {#var#} related to {#var#} services amounting to Rs.{#var#} was due on {#var#} and is still pending. Kindly pay immediately to avoid service interruption. SENSEFLOW INSTRUMENTS PRIVATE LIMITED.
-```
+Add loud, unmissable logs at every relevant point in `src/routes/auth.tsx` so the next click tells us exactly where the flow stops:
 
-## Change
+- Log once on component mount: `[auth] AuthPage mounted`.
+- Add `onClick` on the Send OTP `<Button>` that logs `[auth] Send OTP button clicked` BEFORE the form submit runs — this fires even if `onSubmit` never does.
+- Log inside `onSubmit` at the very first line, before `preventDefault`, so we know the form actually submitted.
+- Wrap the `requestLoginOtp` call so we log the request URL/args and the raw response/error.
 
-- Rewrite `buildMessage` to build the string by taking the template constant verbatim and doing a single `replace` on the first `{#var#}` only — no interpolation, no wording edits, no added/removed spaces or punctuation.
-- Store the template as a single string constant so it is visibly identical to the DLT copy.
-- No other files change. No DB / secrets / UI changes.
+## What we'll learn
 
-## Verification
+- If only "mounted" appears and no click log → you're not on `/auth`; you're clicking the landing CTA. Fix: navigate to `/auth` first.
+- If "button clicked" logs but "onSubmit" does not → HTML validation is blocking (empty/invalid `<input required>`). Fix: fill the field or relax validation.
+- If "onSubmit" logs but "Calling requestLoginOtp" does not → phone regex rejected the input (silent because the toast may be hidden). We'll see the normalized value in the log.
+- If "Calling requestLoginOtp" logs but no network request → server-function transport issue; we investigate `src/start.ts` middleware next.
 
-- Log the outgoing message once in dev to confirm bytes match the template with only the first placeholder swapped.
-- Manual test: request OTP for `+918780488532`, confirm received SMS matches the template exactly.
+No business logic changes. After we identify the cause, we remove the extra logs.

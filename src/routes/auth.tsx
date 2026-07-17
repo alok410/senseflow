@@ -29,6 +29,10 @@ function AuthPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    console.log("[auth] AuthPage mounted", { path: typeof window !== "undefined" ? window.location.pathname : "(ssr)" });
+  }, []);
+
+  useEffect(() => {
     if (session) navigate({ to: "/dashboard", replace: true });
   }, [session, navigate]);
 
@@ -38,6 +42,7 @@ function AuthPage() {
   };
 
   const sendOtp = async (e: React.FormEvent) => {
+    console.log("[auth] form onSubmit fired", { defaultPrevented: e.defaultPrevented });
     e.preventDefault();
     const p = normalizePhone(phone);
     console.log("[auth] Send OTP clicked", { rawPhone: phone, normalized: p });
@@ -129,7 +134,17 @@ function AuthPage() {
                     Include your country code (e.g. <code>+91</code> for India).
                   </p>
                 </div>
-                <Button type="submit" className="w-full" disabled={loading}>
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={loading}
+                  onClick={() =>
+                    console.log("[auth] Send OTP button clicked", {
+                      phoneState: phone,
+                      loading,
+                    })
+                  }
+                >
                   {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   Send OTP
                 </Button>
