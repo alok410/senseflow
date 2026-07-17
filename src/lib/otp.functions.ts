@@ -14,7 +14,10 @@ const SMS_TEMPLATE =
   "Dear {#var#}, payment for Invoice No. {#var#} related to {#var#} services amounting to Rs.{#var#} was due on {#var#} and is still pending. Kindly pay immediately to avoid service interruption. SENSEFLOW INSTRUMENTS PRIVATE LIMITED.";
 
 function buildMessage(otp: string) {
-  return SMS_TEMPLATE.replace("{#var#}", otp);
+  // TEMP: send template literally (no OTP substitution) to match the working
+  // Postman request. `otp` is intentionally unused here.
+  void otp;
+  return SMS_TEMPLATE;
 }
 
 function buildSmsUrl(params: { phone: string; message: string }) {
@@ -29,7 +32,9 @@ function buildSmsUrl(params: { phone: string; message: string }) {
   url.searchParams.set("senderid", senderId);
   url.searchParams.set("templateid", templateId);
   url.searchParams.set("number", params.phone);
-  url.searchParams.set("message", params.message);
+  // Postman URL includes `message` twice — replicate exactly.
+  url.searchParams.append("message", params.message);
+  url.searchParams.append("message", params.message);
   return url.toString();
 }
 

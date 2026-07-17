@@ -1,36 +1,33 @@
-## Problem
+## Goal
 
-The SMS provider (`smsfortius.work`) does not send `Access-Control-Allow-Origin`, so the browser blocks the request:
-
-```
-No 'Access-Control-Allow-Origin' header is present on the requested resource.
-```
-
-The provider actually returns HTTP 200 (the SMS is likely sent), but the browser refuses to expose the response to JS. Postman worked because Postman ignores CORS. You cannot fix this from the client — the provider must add the header, which we don't control.
-
-## Fix
-
-Move the SMS `fetch` back to the **server function**. The server has no CORS restrictions and can call the provider directly. Keep the client-side logs and add matching server-side logs so you still see the full flow.
+Match the exact Postman request that returned `{"status":"Success",...}` — send the SMS template literally (no OTP substitution) and include the `message` param twice, exactly like the working URL.
 
 ## Changes
 
 ### `src/lib/otp.functions.ts`
-- `requestLoginOtp` performs the `fetch(smsUrl)` server-side again.
-- Add `console.log("[sms:server] fetching…", { url: redactedUrl })`, `[sms:server] response { status, body }`, `[sms:server] failed { error }` — visible in server-function logs.
-- Return `{ ok: true, smsStatus, otpMasked }` to the client (never return the full OTP or the API key). `otpMasked` is e.g. `******` — client just logs that a code was issued.
+
+1. **Stop substituting the OTP into the template.**
+   - `buildMessage(otp)` currently does `SMS_TEMPLATE.replace("{#var#}", otp)`.
+   - Change it to return `SMS_TEMPLATE` unchanged, so the body stays exactly:
+     `Dear {#var#}, payment for Invoice No. {#var#} related to {#var#} services amounting to Rs.{#var#} was due on {#var#} and is still pending. Kindly pay immediately to avoid service interruption. SENSEFLOW INSTRUMENTS PRIVATE LIMITED.`
+
+2. **Duplicate the `message` query param** (Postman URL has it twice, and that is what returned Success).
+   - `URLSearchParams.set` only writes one; switch to `append` for `message` and call it twice with the same value. All other params (`apikey`, `senderid`, `templateid`, `number`) stay single via `set`.
+
+3. **Keep OTP generation, storage, and verification untouched** — the DB still gets a fresh 6-digit code, `verifyLoginOtp` still works. Only the outbound SMS body changes for this test.
+
+4. **Keep server-side logs** (`[sms:server] fetching…`, `response`, `failed`) so we can compare the response JSON against the expected `"status":"Success"` payload.
 
 ### `src/routes/auth.tsx`
-- Remove the browser `fetch(smsUrl)` block.
-- Keep the button-click / submit / `requestLoginOtp` request/response logs.
-- Log the server's returned `smsStatus` so the console still shows the outcome of the API hit.
 
-## Result
+No changes — it already logs `smsStatus` and `message` from the server response.
 
-- No CORS error.
-- SMS is actually delivered (as before your Postman test).
-- Console still shows every step: button click → submit → server call → server-reported SMS status.
-- API key stays server-side (no longer exposed to any visitor of the site).
+## Verification
 
-## Alternative you can ask for later
+After the change, the outbound URL logged server-side (with apikey redacted) should match the Postman URL structure:
+`...&number=+91...&message=Dear {%23var%23}...LIMITED.&message=Dear {%23var%23}...LIMITED.`
+and the response body should be `{"status":"Success","code":"011",...}`.
 
-If you truly want the browser to hit `smsfortius.work` directly, we'd need a same-origin proxy route (`/api/public/sms-proxy`) that forwards the request. That still runs the fetch on the server; it just makes it look client-initiated. Same effect as this plan, more moving parts — say the word if you want it.
+## Note
+
+This is a temporary test setup — the user will still receive the literal template with `{#var#}` placeholders in the SMS, not their actual OTP. Revert `buildMessage` to substitute the OTP once the provider delivery is confirmed.
