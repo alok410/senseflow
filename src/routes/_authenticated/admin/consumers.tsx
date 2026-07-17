@@ -231,7 +231,7 @@ function AdminConsumers() {
                     <td className="px-4 py-3">{c.is_active ? <Badge>Active</Badge> : <Badge variant="secondary">Inactive</Badge>}</td>
                     <td className="px-4 py-3 text-right">
                       <Link to="/admin/consumers/$id" params={{ id: c.id }}><Button size="sm" variant="ghost" title="Analysis"><BarChart3 className="h-3.5 w-3.5" /></Button></Link>
-                      <Button size="sm" variant="ghost" disabled={fetchMut.isPending || !c.consumer_details?.device_id} onClick={() => fetchMut.mutate(c.id)} title="Fetch latest reading"><RefreshCw className="h-3.5 w-3.5" /></Button>
+                      <Button size="sm" variant="ghost" disabled={fetchMut.isPending || !(c.consumer_details?.meter_id || c.consumer_details?.device_id)} onClick={() => fetchMut.mutate(c.id)} title="Fetch latest reading"><RefreshCw className="h-3.5 w-3.5" /></Button>
                       <Button size="sm" variant="ghost" onClick={() => setEditing(c)}><Pencil className="h-3.5 w-3.5" /></Button>
                       <Button size="sm" variant="ghost" onClick={() => { if (confirm(`Deactivate ${c.full_name || c.phone}?`)) deactMut.mutate(c.id); }}><Trash2 className="h-3.5 w-3.5" /></Button>
                     </td>
