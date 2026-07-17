@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
 import { useSession } from "@/hooks/use-session";
+import { requestLoginOtp, verifyLoginOtp } from "@/lib/otp.functions";
 
 export const Route = createFileRoute("/auth")({
   head: () => ({
@@ -44,36 +45,39 @@ function AuthPage() {
       return;
     }
     setLoading(true);
-    const { error } = await supabase.auth.signInWithOtp({ phone: p });
-    setLoading(false);
-    if (error) {
-      toast.error(error.message);
-      return;
+    try {
+      await requestLoginOtp({ data: { phone: p } });
+      setPhone(p);
+      setStep("otp");
+      toast.success("OTP sent to your phone.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to send OTP.");
+    } finally {
+      setLoading(false);
     }
-    setPhone(p);
-    setStep("otp");
-    toast.success("OTP sent to your phone.");
   };
 
   const verifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!otp || otp.length < 4) {
-      toast.error("Enter the OTP code.");
+    if (!otp || otp.length !== 6) {
+      toast.error("Enter the 6-digit OTP code.");
       return;
     }
     setLoading(true);
-    const { error } = await supabase.auth.verifyOtp({
-      phone,
-      token: otp,
-      type: "sms",
-    });
-    setLoading(false);
-    if (error) {
-      toast.error(error.message);
-      return;
+    try {
+      const { tokenHash } = await verifyLoginOtp({ data: { phone, code: otp } });
+      const { error } = await supabase.auth.verifyOtp({
+        token_hash: tokenHash,
+        type: "magiclink",
+      });
+      if (error) throw new Error(error.message);
+      toast.success("Signed in.");
+      navigate({ to: "/dashboard", replace: true });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Verification failed.");
+    } finally {
+      setLoading(false);
     }
-    toast.success("Signed in.");
-    navigate({ to: "/dashboard", replace: true });
   };
 
   return (
