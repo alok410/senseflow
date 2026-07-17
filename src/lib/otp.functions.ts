@@ -8,9 +8,13 @@ function hashCode(code: string, phone: string) {
   return createHash("sha256").update(`${phone}:${code}`).digest("hex");
 }
 
-// DLT-approved template body sent verbatim; only the OTP fills the first {#var#}.
+// DLT-approved template body — kept byte-for-byte identical. Only the FIRST
+// {#var#} is replaced with the OTP; all other placeholders remain literal.
+const SMS_TEMPLATE =
+  "Dear {#var#}, payment for Invoice No. {#var#} related to {#var#} services amounting to Rs.{#var#} was due on {#var#} and is still pending. Kindly pay immediately to avoid service interruption. SENSEFLOW INSTRUMENTS PRIVATE LIMITED.";
+
 function buildMessage(otp: string) {
-  return `Dear ${otp}, payment for Invoice No. {#var#} related to {#var#} services amounting to Rs.{#var#} was due on {#var#} and is still pending. Kindly pay immediately to avoid service interruption. SENSEFLOW INSTRUMENTS PRIVATE LIMITED.`;
+  return SMS_TEMPLATE.replace("{#var#}", otp);
 }
 
 export const requestLoginOtp = createServerFn({ method: "POST" })
