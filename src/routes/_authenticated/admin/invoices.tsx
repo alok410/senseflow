@@ -47,12 +47,15 @@ function AdminInvoices() {
     queryKey: ["admin-invoices"],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("invoices")
-        .select("*, profiles!invoices_consumer_id_fkey(full_name, phone)")
-        .order("created_at", { ascending: false })
-        .limit(500);
+        .from("invoices").select("*").order("created_at", { ascending: false }).limit(500);
       if (error) throw error;
-      return (data as unknown as Row[]);
+      const rows = data || [];
+      const ids = Array.from(new Set(rows.map((r) => r.consumer_id)));
+      const profs = ids.length
+        ? (await supabase.from("profiles").select("id, full_name, phone").in("id", ids)).data || []
+        : [];
+      const pMap = new Map(profs.map((p) => [p.id, p]));
+      return rows.map((r) => ({ ...r, profiles: pMap.get(r.consumer_id) || null })) as unknown as Row[];
     },
   });
 
