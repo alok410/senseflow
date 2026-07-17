@@ -82,16 +82,12 @@ export const requestLoginOtp = createServerFn({ method: "POST" })
     console.log("[sms:server] fetching…", { url: redactedUrl });
     let smsStatus = 0;
     let smsBody = "";
-    let smsResponse: unknown = null;
+    let smsResponseRaw: string = "";
     try {
       const res = await fetch(smsUrl, { method: "POST" });
       smsStatus = res.status;
       smsBody = await res.text().catch(() => "");
-      try {
-        smsResponse = smsBody ? JSON.parse(smsBody) : null;
-      } catch {
-        smsResponse = smsBody;
-      }
+      smsResponseRaw = smsBody;
       console.log("[sms:server] response", {
         status: smsStatus,
         ok: res.ok,
@@ -112,7 +108,7 @@ export const requestLoginOtp = createServerFn({ method: "POST" })
     return {
       ok: true,
       smsStatus,
-      smsResponse: smsResponse as Record<string, unknown> | string | null,
+      smsResponseRaw,
       message,
     };
   });
