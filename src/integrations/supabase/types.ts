@@ -209,6 +209,7 @@ export type Database = {
           expires_at: string
           id: string
           phone: string
+          role: Database["public"]["Enums"]["app_role"]
         }
         Insert: {
           attempts?: number
@@ -217,6 +218,7 @@ export type Database = {
           expires_at: string
           id?: string
           phone: string
+          role: Database["public"]["Enums"]["app_role"]
         }
         Update: {
           attempts?: number
@@ -225,6 +227,7 @@ export type Database = {
           expires_at?: string
           id?: string
           phone?: string
+          role?: Database["public"]["Enums"]["app_role"]
         }
         Relationships: []
       }
