@@ -1,52 +1,31 @@
-## Findings vs the Postman request
+## Goal
 
-Comparing our server call to the Postman screenshot (200 OK, `{"status":"Success","code":"011","description":"Message submitted successfully","data":{"messageid":"14408","totnumber":1,"totalcredit":2}}`):
+Re-enable OTP substitution so the SMS you receive contains a real 6-digit code you can type into the verify screen to sign in and land on `/dashboard`.
 
-| Item | Postman | Our code | Match? |
-|---|---|---|---|
-| URL host + path | `https://smsfortius.work/V2/apikey.php` | same | yes |
-| `apikey`, `senderid`, `templateid`, `number` | single each | single each via `set` | yes |
-| `message` param | duplicated | duplicated via `append` | yes |
-| Message body | literal template with `{#var#}` | literal template (OTP substitution disabled) | yes |
-| **HTTP method** | **POST** | **GET** | **NO** |
-| Response body surfaced to client | full JSON visible | not returned — only `smsStatus` + our template string returned | **NO** |
-
-Two real problems:
-
-1. We hit the URL with `GET`. Postman used `POST`. Even though the query string is identical, the provider may accept only POST for the `apikey.php` endpoint — that would explain "no SMS delivered / no credit deducted".
-2. The provider's JSON response (containing `status`, `description`, `messageid`, `totalcredit`) is logged only server-side. The client-side console never sees it, so you can't tell whether it succeeded.
-
-## Fix
+## Changes
 
 ### `src/lib/otp.functions.ts`
-- Change `fetch(smsUrl, { method: "GET" })` → `fetch(smsUrl, { method: "POST" })`. Body stays empty; all params remain in the query string, exactly like Postman.
-- After the fetch, try `JSON.parse(smsBody)`; keep the raw string as fallback.
-- Return the provider's parsed response to the client:
+- Restore `buildMessage(otp)` to substitute the OTP into the FIRST `{#var#}` only, leaving the other four placeholders literal (DLT template rule):
   ```
-  return { ok: true, smsStatus, smsResponse: parsedOrRaw, message };
+  return SMS_TEMPLATE.replace("{#var#}", otp);
   ```
-  (Still no `apikey` and no OTP in the return value.)
-- Keep existing `[sms:server]` logs.
+- No changes to URL building (manual query string with literal `+`, `message` twice, POST method) — that path is already delivering.
+- OTP generation, DB storage (`otp_codes.code_hash`), and `verifyLoginOtp` remain unchanged, so the code you receive will match the one verified server-side.
 
 ### `src/routes/auth.tsx`
-- Extend the existing `[auth] requestLoginOtp response` log to include `smsResponse` so the browser console shows the full `{status, code, description, data:{messageid, totnumber, totalcredit}}` payload.
-- No UI changes.
+- No functional changes needed. The verify step already:
+  1. Calls `verifyLoginOtp({ phone, code })`
+  2. Uses the returned `tokenHash` with `supabase.auth.verifyOtp({ type: "magiclink" })`
+  3. `navigate({ to: "/dashboard", replace: true })` on success
 
 ## Verification
 
-After the change, on clicking **Send OTP** the browser console should show:
-```
-[auth] requestLoginOtp response {
-  phone: '+91…',
-  durationMs: …,
-  smsStatus: 200,
-  smsResponse: { status: 'Success', code: '011', description: 'Message submitted successfully',
-                 data: { messageid: '…', totnumber: 1, totalcredit: 2 } },
-  message: 'Dear {#var#}, payment for Invoice No. …'
-}
-```
-and the SMS should actually be delivered (matching your Postman run). Server logs (`[sms:server] response`) will show the same body for cross-check.
+After the change:
+1. Enter phone → **Send OTP** → SMS arrives with `Dear 483920, payment for Invoice No. {#var#} …` (real 6-digit code in the greeting).
+2. Enter that 6-digit code on the verify screen → **Verify & sign in**.
+3. Toast "Signed in" → redirect to `/dashboard`.
+
+Server console still logs `[sms:server] response` with `status: "Success"`; browser console logs `smsResponse` with credit info.
 
 ## Not changed
-
-OTP generation/storage/verify flow, template text, secrets handling, auth UI. Only the outbound HTTP method and the shape of the value returned to the client change.
+Anything in `_authenticated/dashboard.tsx`, auth middleware, `user_roles`, or profile flow. Purely re-enabling the OTP → template substitution.

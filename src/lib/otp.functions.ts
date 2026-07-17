@@ -14,10 +14,9 @@ const SMS_TEMPLATE =
   "Dear {#var#}, payment for Invoice No. {#var#} related to {#var#} services amounting to Rs.{#var#} was due on {#var#} and is still pending. Kindly pay immediately to avoid service interruption. SENSEFLOW INSTRUMENTS PRIVATE LIMITED.";
 
 function buildMessage(otp: string) {
-  // TEMP: send template literally (no OTP substitution) to match the working
-  // Postman request. `otp` is intentionally unused here.
-  void otp;
-  return SMS_TEMPLATE;
+  // Replace ONLY the first {#var#} with the OTP; the remaining four placeholders
+  // must stay literal to match the approved DLT template.
+  return SMS_TEMPLATE.replace("{#var#}", otp);
 }
 
 function buildSmsUrl(params: { phone: string; message: string }) {
