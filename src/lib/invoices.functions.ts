@@ -22,7 +22,7 @@ export const markInvoicePaid = createServerFn({ method: "POST" })
 
     const { data: inv, error: iErr } = await supabaseAdmin
       .from("invoices")
-      .select("id, consumer_id, total_amount, status, invoice_number")
+      .select("id, consumer_id, total_amount, status")
       .eq("id", data.invoiceId)
       .maybeSingle();
     if (iErr) throw new Error(iErr.message);
@@ -35,14 +35,14 @@ export const markInvoicePaid = createServerFn({ method: "POST" })
       .eq("id", data.invoiceId);
     if (upErr) throw new Error(upErr.message);
 
+    const method = (data.method === "online" || data.method === "prepaid_recharge") ? data.method : "manual";
     const { error: pErr } = await supabaseAdmin.from("payments").insert({
       invoice_id: inv.id,
       consumer_id: inv.consumer_id,
       amount: inv.total_amount,
-      method: data.method ?? "manual",
+      method,
       notes: data.notes ?? null,
       recorded_by: context.userId,
-      paid_at: paidAt,
     });
     if (pErr) throw new Error(pErr.message);
 
