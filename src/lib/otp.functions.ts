@@ -109,7 +109,12 @@ export const requestLoginOtp = createServerFn({ method: "POST" })
       throw new Error("Failed to send OTP. Please try again.");
     }
 
-    return { ok: true, smsStatus, smsResponse, message };
+    return {
+      ok: true,
+      smsStatus,
+      smsResponse: smsResponse as Record<string, unknown> | string | null,
+      message,
+    };
   });
 
 export const verifyLoginOtp = createServerFn({ method: "POST" })
