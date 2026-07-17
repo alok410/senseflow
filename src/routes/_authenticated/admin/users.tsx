@@ -18,10 +18,11 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Loader2, Plus, Pencil } from "lucide-react";
+import { Loader2, Plus, Pencil, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useSession, useMyProfile, type AppRole } from "@/hooks/use-session";
 import { createUser, setUserRoles } from "@/lib/admin.functions";
+import { deleteConsumer } from "@/lib/consumers.functions";
 import { ADMIN_NAV } from "@/lib/nav";
 
 export const Route = createFileRoute("/_authenticated/admin/users")({
@@ -86,6 +87,16 @@ function AdminUsers() {
       toast.success("Roles updated.");
       setEditing(null);
       qc.invalidateQueries({ queryKey: ["admin-users"] });
+    },
+    onError: (err: unknown) => toast.error(err instanceof Error ? err.message : "Failed"),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: async (userId: string) => deleteConsumer({ data: { userId } }),
+    onSuccess: () => {
+      toast.success("User deleted.");
+      qc.invalidateQueries({ queryKey: ["admin-users"] });
+      qc.invalidateQueries({ queryKey: ["admin-consumers"] });
     },
     onError: (err: unknown) => toast.error(err instanceof Error ? err.message : "Failed"),
   });
@@ -232,6 +243,18 @@ function AdminUsers() {
                           }}
                         >
                           <Pencil className="mr-1 h-3.5 w-3.5" /> Roles
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={u.id === user?.id}
+                          onClick={() => {
+                            if (confirm(`Delete ${u.full_name || u.phone}? This removes the user and all their data.`)) {
+                              deleteMut.mutate(u.id);
+                            }
+                          }}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </td>
                     </tr>
