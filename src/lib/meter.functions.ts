@@ -90,7 +90,7 @@ export const fetchAndStoreLatestReading = createServerFn({ method: "POST" })
     if (existing) return { skipped: true, id: existing.id };
 
     const { data: inserted, error: iErr } = await supabaseAdmin
-      .from("meter_readings").insert(row).select("*").single();
+      .from("meter_readings").insert(row as any).select("*").single();
     if (iErr) throw new Error(iErr.message);
     return { skipped: false, reading: inserted };
   });

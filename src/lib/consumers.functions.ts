@@ -91,7 +91,7 @@ export const updateConsumer = createServerFn({ method: "POST" })
     if (data.email !== undefined) p.email = data.email ?? null;
     if (data.is_active !== undefined) p.is_active = data.is_active;
     if (Object.keys(p).length) {
-      const { error } = await supabaseAdmin.from("profiles").update(p).eq("id", data.userId);
+      const { error } = await supabaseAdmin.from("profiles").update(p as any).eq("id", data.userId);
       if (error) throw new Error(error.message);
     }
 
@@ -103,7 +103,7 @@ export const updateConsumer = createServerFn({ method: "POST" })
     if (data.assignedSecretaryId !== undefined) d.assigned_secretary_id = data.assignedSecretaryId;
     if (Object.keys(d).length) {
       const { error } = await supabaseAdmin.from("consumer_details")
-        .upsert({ user_id: data.userId, ...d }, { onConflict: "user_id" });
+        .upsert({ user_id: data.userId, ...d } as any, { onConflict: "user_id" });
       if (error) throw new Error(error.message);
     }
     return { ok: true };

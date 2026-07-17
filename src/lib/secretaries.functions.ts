@@ -79,7 +79,7 @@ export const updateSecretary = createServerFn({ method: "POST" })
     if (data.email !== undefined) patch.email = data.email ?? null;
     if (data.is_active !== undefined) patch.is_active = data.is_active;
     if (Object.keys(patch).length) {
-      const { error } = await supabaseAdmin.from("profiles").update(patch).eq("id", data.userId);
+      const { error } = await supabaseAdmin.from("profiles").update(patch as any).eq("id", data.userId);
       if (error) throw new Error(error.message);
     }
     if (data.locationIds) {
