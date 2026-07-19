@@ -506,3 +506,106 @@ export const getAdminDashboardStats = createServerFn({ method: "POST" })
       leaders,
     };
   });
+
+// ---- Secretary dashboard (live Senseflow, scoped to assigned location) ----
+
+export const getSecretaryDashboardStats = createServerFn({ method: "POST" })
+  .inputValidator((d: unknown) => z.object({
+    secretaryId: z.string().uuid(),
+    start: z.string(),
+    end: z.string(),
+    userId: z.string().uuid().optional().nullable(),
+  }).parse(d))
+  .handler(async ({ data }) => {
+    const token = process.env.SENSEFLOW_API_TOKEN;
+    if (!token) throw new Error("SENSEFLOW_API_TOKEN not configured");
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    const { data: sl } = await supabaseAdmin
+      .from("secretary_locations").select("location_id").eq("secretary_id", data.secretaryId).maybeSingle();
+    const locationId = sl?.location_id ?? null;
+
+    let locationName = "";
+    if (locationId) {
+      const { data: loc } = await supabaseAdmin.from("locations").select("name").eq("id", locationId).maybeSingle();
+      locationName = loc?.name ?? "";
+    }
+
+    let details: DashboardConsumer[] = [];
+    if (locationId) {
+      const { data: dRows, error: dErr } = await supabaseAdmin
+        .from("consumer_details")
+        .select("user_id, device_id, serial_number, block_id, location_id")
+        .eq("location_id", locationId)
+        .not("device_id", "is", null);
+      if (dErr) throw new Error(dErr.message);
+      const ids = (dRows ?? []).map((d: any) => d.user_id);
+      const { data: profiles } = ids.length
+        ? await supabaseAdmin.from("profiles").select("id, full_name, phone, email, is_active").in("id", ids)
+        : { data: [] as any[] };
+      const pmap = new Map((profiles ?? []).map((p: any) => [p.id, p]));
+      details = ((dRows ?? []) as any[]).map((d) => {
+        const p: any = pmap.get(d.user_id);
+        return {
+          user_id: d.user_id,
+          device_id: d.device_id,
+          serial_number: d.serial_number,
+          block_id: d.block_id,
+          location_id: d.location_id,
+          full_name: p?.full_name ?? null,
+          phone: p?.phone ?? null,
+          email: p?.email ?? null,
+          is_active: p?.is_active ?? true,
+        } satisfies DashboardConsumer;
+      });
+    }
+
+    let scoped = canonicalizeConsumers(details.filter(isValidDashboardConsumer));
+    if (data.userId) scoped = scoped.filter((d) => d.user_id === data.userId);
+
+    const startIso = `${data.start}T00:00:00Z`;
+    const endIso = `${data.end}T23:59:59Z`;
+
+    const devices = scoped.map((d) => d.device_id);
+    const histories = await mapWithConcurrency(devices, 5, (dev) => sfHistory(dev, startIso, endIso, token));
+
+    // Per-consumer totals (liters)
+    const usageByConsumer: Record<string, number> = {};
+    scoped.forEach((c, i) => {
+      const totalL = Math.round(histories[i].reduce((s, d) => s + consumptionKl(d), 0) * 1000);
+      usageByConsumer[c.user_id] = totalL;
+    });
+
+    // Daily trend
+    const byDay = new Map<string, number>();
+    for (const days of histories) {
+      for (const d of days) {
+        byDay.set(d.reading_date, (byDay.get(d.reading_date) || 0) + consumptionKl(d));
+      }
+    }
+    const trend = Array.from(byDay.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([date, kl]) => ({ date, consumption: Math.round(kl * 1000) }));
+
+    const totalUsageL = Math.round(
+      histories.reduce((s, days) => s + days.reduce((a, d) => a + consumptionKl(d), 0), 0) * 1000,
+    );
+
+    return {
+      locationId,
+      locationName,
+      consumers: scoped.map((c) => ({
+        user_id: c.user_id,
+        device_id: c.device_id,
+        serial_number: c.serial_number,
+        block_id: c.block_id,
+        location_id: c.location_id,
+        full_name: c.full_name,
+        phone: c.phone,
+        email: c.email,
+      })),
+      usageByConsumer,
+      trend,
+      totalUsageL,
+    };
+  });
