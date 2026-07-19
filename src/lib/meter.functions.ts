@@ -170,6 +170,10 @@ function canonicalizeConsumers(rows: DashboardConsumer[]): DashboardConsumer[] {
   });
 }
 
+function consumptionKl(day: HistoryDay): number {
+  return Math.max(0, Number(day.consumption || 0));
+}
+
 async function fetchWithTimeout(url: string, token: string, timeoutMs = 8000): Promise<Response> {
   const controller = new AbortController();
   let timeout: ReturnType<typeof setTimeout> | undefined;
@@ -337,7 +341,7 @@ export const getAdminDashboardStats = createServerFn({ method: "POST" })
     let todaysUsageKl = 0;
     let thisMonthKl = 0;
     for (const d of mainHistory) {
-      const c = Number(d.consumption || 0);
+      const c = consumptionKl(d);
       if (d.reading_date === todayStr) todaysUsageKl += c;
       if (d.reading_date.startsWith(monthPrefix)) thisMonthKl += c;
     }
@@ -349,10 +353,10 @@ export const getAdminDashboardStats = createServerFn({ method: "POST" })
         [] as HistoryDay[],
         35000,
       );
-      monthFull = mHist.length ? mHist.reduce((s, r) => s + Number(r.consumption || 0), 0) : monthFull;
+      monthFull = mHist.length ? mHist.reduce((s, r) => s + consumptionKl(r), 0) : monthFull;
       if (!todaysUsageKl) {
         const t = mHist.find((r) => r.reading_date === todayStr);
-        todaysUsageKl = t ? Number(t.consumption || 0) : 0;
+        todaysUsageKl = t ? consumptionKl(t) : 0;
       }
     }
     const latestMainHistory = mainHistory.at(-1);
@@ -365,20 +369,20 @@ export const getAdminDashboardStats = createServerFn({ method: "POST" })
     const byDay = new Map<string, number>();
     for (const days of analyticsHistories) {
       for (const d of days) {
-        byDay.set(d.reading_date, (byDay.get(d.reading_date) || 0) + Number(d.consumption || 0));
+        byDay.set(d.reading_date, (byDay.get(d.reading_date) || 0) + consumptionKl(d));
       }
     }
     const trend = Array.from(byDay.entries())
       .sort((a, b) => a[0].localeCompare(b[0]))
       .map(([date, kl]) => ({ date, consumption: Math.round(kl * 1000) }));
     const totalConsumptionL = Math.round(
-      analyticsHistories.reduce((s, days) => s + days.reduce((a, d) => a + Number(d.consumption || 0), 0), 0) * 1000,
+      analyticsHistories.reduce((s, days) => s + days.reduce((a, d) => a + consumptionKl(d), 0), 0) * 1000,
     );
 
     // Leaderboard (top consumers in range)
     const groupedByDevice = new Map<string, { device_id: string; total_l: number; detail: DashboardConsumer }>();
     analyticsDevices.forEach((dev, i) => {
-      const total = Math.round(analyticsHistories[i].reduce((a, d) => a + Number(d.consumption || 0), 0) * 1000);
+      const total = Math.round(analyticsHistories[i].reduce((a, d) => a + consumptionKl(d), 0) * 1000);
       const existing = groupedByDevice.get(dev);
       if (existing) existing.total_l += total;
       else groupedByDevice.set(dev, { device_id: dev, total_l: total, detail: details[i] });
