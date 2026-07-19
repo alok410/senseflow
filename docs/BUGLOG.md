@@ -1,5 +1,13 @@
 # Bug Log
 
+## [v1.0.17] – 2026-07-19 (16:45)
+
+### Fixed
+- Bug: Secretary dashboard totals/trend/top users didn't match the reference system (all showed empty or 0).
+  - Cause: Dashboard read consumption from the local `meter_readings` table (empty), like the old consumer/admin path did before the live-API migration.
+  - Fix: Added `getSecretaryDashboardStats` server function that resolves the secretary's assigned location, canonicalizes its consumers, and aggregates live Senseflow history per device (per-consumer totals, daily trend, total usage) for the selected date range and optional user filter. Rewired the secretary dashboard to consume it and drive Total usage, Avg per user, trend chart, Top 5, and per-row usage from the live data.
+  - Files: src/lib/meter.functions.ts, src/routes/_authenticated/secretary/index.tsx
+
 ## [v1.0.16] – 2026-07-19 (16:35)
 
 ### Fixed
