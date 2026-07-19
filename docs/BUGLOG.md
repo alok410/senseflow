@@ -1,5 +1,13 @@
 # Bug Log
 
+## [v1.0.14] – 2026-07-19 (16:15)
+
+### Fixed
+- Bug: Consumer dashboard values for USFL_WM0013 didn't match the reference system.
+  - Cause: The consumer dashboard read from the local `meter_readings` table (empty), instead of the live Senseflow API used by the reference dashboard.
+  - Fix: Added `getConsumerDashboardStats` server function that fetches Senseflow history + latest for the consumer's `device_id` and returns today/month/total/range aggregates, trend and history (kL → L). Rewired the consumer dashboard to use it and render Closing/Opening/Consumption from the API.
+  - Files: src/lib/meter.functions.ts, src/routes/_authenticated/consumer/index.tsx
+
 ## [v1.0.13] – 2026-07-19 (15:55)
 
 ### Fixed
