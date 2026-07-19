@@ -171,7 +171,8 @@ function canonicalizeConsumers(rows: DashboardConsumer[]): DashboardConsumer[] {
 }
 
 function consumptionKl(day: HistoryDay): number {
-  return Math.max(0, Number(day.consumption || 0));
+  // Match reference dashboard: use raw consumption (may be negative on meter resets).
+  return Number(day.consumption || 0);
 }
 
 async function fetchWithTimeout(url: string, token: string, timeoutMs = 8000): Promise<Response> {
