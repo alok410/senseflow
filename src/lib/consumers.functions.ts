@@ -153,6 +153,7 @@ const DEMO_CONSUMERS: Array<{
   { block: "50",  name: "Test",              meter: "USFL_WM0010", serial: "50",             email: "test@gmail.com" },
   { block: "7",   name: "V. K. PATEL",       meter: "USFL_WM0017", serial: "24110200025502", email: "h7@gmail.com" },
   { block: "22",  name: "V.K.PATE",          meter: "USFL_WM0025", serial: "24121200035557", email: "h22@gmail.com" },
+  { block: "00",  name: "MainMeter",         meter: "USFL_FL7053", serial: null,             email: "mainmeter@gmail.com" },
 ];
 
 export const seedDemoConsumers = createServerFn({ method: "POST" })
