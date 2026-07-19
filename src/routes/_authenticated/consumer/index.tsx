@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { format, parseISO, startOfMonth, subDays } from "date-fns";
+import { format, parseISO, subDays } from "date-fns";
 import {
   Gauge, IndianRupee, FileText, Wallet, RefreshCw, Loader2, Gift,
   TrendingUp, BarChart3, Clock, Droplets, CreditCard,
@@ -25,7 +25,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { useSession, useMyProfile } from "@/hooks/use-session";
-import { fetchAndStoreLatestReading } from "@/lib/meter.functions";
+import { fetchAndStoreLatestReading, getConsumerDashboardStats } from "@/lib/meter.functions";
 import { CONSUMER_NAV } from "@/lib/nav";
 
 export const Route = createFileRoute("/_authenticated/consumer/")({
@@ -69,58 +69,42 @@ function ConsumerDashboard() {
     queryKey: ["consumer-dashboard", user?.id],
     enabled: !!user,
     queryFn: async () => {
-      const [details, invoices, balance, monthReadings, rate] = await Promise.all([
+      const [details, invoices, balance, rate] = await Promise.all([
         supabase.from("consumer_details").select("meter_id, serial_number, device_id, block_id, location_id, locations(name, code)").eq("user_id", user!.id).maybeSingle(),
         supabase.from("invoices").select("*").eq("consumer_id", user!.id).order("created_at", { ascending: false }).limit(10),
         supabase.from("prepaid_balances").select("balance").eq("consumer_id", user!.id).maybeSingle(),
-        supabase.from("meter_readings").select("consumption, reading, reading_date")
-          .eq("consumer_id", user!.id)
-          .gte("reading_date", format(startOfMonth(new Date()), "yyyy-MM-dd"))
-          .order("reading_date", { ascending: false }),
         supabase.from("water_rates").select("*").order("effective_from", { ascending: false }).limit(1).maybeSingle(),
       ]);
       const pending = (invoices.data || []).filter((i) => i.status !== "paid");
       const pendingAmount = pending.reduce((s, i) => s + Number(i.total_amount || 0), 0);
-      const thisMonthTotal = (monthReadings.data || []).reduce((s, r) => s + Number(r.consumption || 0), 0);
-      const latestReading = monthReadings.data?.[0];
       const freeTier = Number(rate.data?.free_tier_liters || 0);
       const ratePerLiter = Number(rate.data?.rate_per_liter || 0);
-      const thisMonthChargeable = Math.max(0, thisMonthTotal - freeTier);
-      const thisMonthBill = thisMonthChargeable * ratePerLiter;
       return {
         details: details.data,
         invoices: invoices.data || [],
         pending,
         pendingAmount,
         balance: Number(balance.data?.balance || 0),
-        thisMonthTotal,
-        thisMonthChargeable,
-        thisMonthBill,
         freeTier,
         ratePerLiter,
-        latestReading,
       };
     },
   });
 
-  const readings = useQuery({
-    queryKey: ["consumer-readings", user?.id, start, end],
+  const live = useQuery({
+    queryKey: ["consumer-live", user?.id, start, end],
     enabled: !!user,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("meter_readings")
-        .select("id, reading, previous_reading, consumption, reading_date, source")
-        .eq("consumer_id", user!.id)
-        .gte("reading_date", start)
-        .lte("reading_date", `${end}T23:59:59.999Z`)
-        .order("reading_date", { ascending: true });
-      if (error) throw error;
-      return data || [];
+      return await getConsumerDashboardStats({ data: { consumerId: user!.id, start, end } });
     },
   });
 
+  const thisMonthTotal = live.data?.thisMonthL ?? 0;
+  const thisMonthChargeable = Math.max(0, thisMonthTotal - (meta.data?.freeTier || 0));
+  const thisMonthBill = thisMonthChargeable * (meta.data?.ratePerLiter || 0);
+
   const analysis = useMemo(() => {
-    const rows = readings.data || [];
+    const rows = live.data?.history || [];
     if (!rows.length) return { total: 0, avg: 0, min: 0, max: 0, count: 0, chargeable: 0, bill: 0 };
     const c = rows.map((r) => Number(r.consumption || 0));
     const total = c.reduce((a, b) => a + b, 0);
@@ -132,15 +116,16 @@ function ConsumerDashboard() {
       min: Math.min(...c), max: Math.max(...c),
       count: c.length, chargeable, bill: chargeable * rate,
     };
-  }, [readings.data, meta.data]);
+  }, [live.data, meta.data]);
 
-  const chartData = (readings.data || []).map((r) => ({
-    date: r.reading_date,
-    label: format(parseISO(r.reading_date), "dd MMM"),
+  const chartData = (live.data?.trend || []).map((r) => ({
+    date: r.date,
+    label: format(parseISO(r.date), "dd MMM"),
     consumption: Number(r.consumption || 0),
   }));
 
   const s = meta.data;
+  const latestReading = live.data?.latest;
   const selectedInvoiceData = s?.invoices.find((i) => i.id === selectedInvoice);
   const canPayWithPrepaid = !!selectedInvoiceData && (s?.balance || 0) >= Number(selectedInvoiceData.total_amount || 0);
 
@@ -178,14 +163,15 @@ function ConsumerDashboard() {
         <StatsCard label="Free tier" value={`${(s?.freeTier || 0).toLocaleString("en-IN")} L`} icon={Gift} />
         <StatsCard
           label="Latest reading"
-          value={s?.latestReading ? `${Number(s.latestReading.reading).toLocaleString("en-IN")} L` : "—"}
-          hint={s?.latestReading ? format(new Date(s.latestReading.reading_date), "dd MMM, hh:mm a") : undefined}
+          value={latestReading?.meter_reading != null ? `${Math.round(Number(latestReading.meter_reading) * 1000).toLocaleString("en-IN")} L` : "—"}
+          hint={latestReading?.reading_datetime ? format(new Date(latestReading.reading_datetime), "dd MMM, hh:mm a") : undefined}
           icon={Gauge}
         />
-        <StatsCard label="Last consumption" value={s?.latestReading ? `${Number(s.latestReading.consumption || 0).toLocaleString("en-IN")} L` : "—"} icon={TrendingUp} />
-        <StatsCard label="This month usage" value={`${(s?.thisMonthTotal || 0).toLocaleString("en-IN")} L`} icon={BarChart3} tone="success" />
-        <StatsCard label="Chargeable (month)" value={`${(s?.thisMonthChargeable || 0).toLocaleString("en-IN")} L`} icon={Droplets} tone="warning" hint={`After ${(s?.freeTier || 0).toLocaleString("en-IN")}L free`} />
-        <StatsCard label="This month bill" value={`₹${(s?.thisMonthBill || 0).toFixed(2)}`} icon={IndianRupee} tone="success" />
+        <StatsCard label="Today's usage" value={`${(live.data?.todaysUsageL || 0).toLocaleString("en-IN")} L`} icon={TrendingUp} />
+        <StatsCard label="This month usage" value={`${thisMonthTotal.toLocaleString("en-IN")} L`} icon={BarChart3} tone="success" />
+        <StatsCard label="Total usage" value={`${(live.data?.totalUsageL || 0).toLocaleString("en-IN")} L`} icon={Gauge} />
+        <StatsCard label="Chargeable (month)" value={`${thisMonthChargeable.toLocaleString("en-IN")} L`} icon={Droplets} tone="warning" hint={`After ${(s?.freeTier || 0).toLocaleString("en-IN")}L free`} />
+        <StatsCard label="This month bill" value={`₹${thisMonthBill.toFixed(2)}`} icon={IndianRupee} tone="success" />
         <StatsCard label="Pending" value={`₹${(s?.pendingAmount || 0).toLocaleString("en-IN")}`} icon={FileText} tone="warning" />
         <StatsCard label="Prepaid balance" value={`₹${(s?.balance || 0).toLocaleString("en-IN")}`} icon={Wallet} />
       </div>
@@ -288,24 +274,24 @@ function ConsumerDashboard() {
             </div>
           </div>
 
-          {readings.isLoading ? (
+          {live.isLoading ? (
             <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>
-          ) : (readings.data?.length || 0) > 0 ? (
+          ) : (live.data?.history?.length || 0) > 0 ? (
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Date</TableHead>
-                  <TableHead>Current</TableHead>
-                  <TableHead>Previous</TableHead>
+                  <TableHead>Closing</TableHead>
+                  <TableHead>Opening</TableHead>
                   <TableHead>Consumption</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {[...(readings.data || [])].reverse().map((r) => (
-                  <TableRow key={r.id}>
-                    <TableCell className="text-xs">{format(parseISO(r.reading_date), "dd MMM yyyy, hh:mm a")}</TableCell>
-                    <TableCell className="font-medium">{Number(r.reading).toLocaleString("en-IN")}</TableCell>
-                    <TableCell className="text-muted-foreground">{Number(r.previous_reading).toLocaleString("en-IN")}</TableCell>
+                {[...(live.data?.history || [])].reverse().map((r) => (
+                  <TableRow key={r.date}>
+                    <TableCell className="text-xs">{format(parseISO(r.date), "dd MMM yyyy")}</TableCell>
+                    <TableCell className="font-medium">{Number(r.closing).toLocaleString("en-IN")}</TableCell>
+                    <TableCell className="text-muted-foreground">{Number(r.opening).toLocaleString("en-IN")}</TableCell>
                     <TableCell>
                       <Badge variant="outline" className={Number(r.consumption) > (s?.freeTier || Infinity) ? "border-warning text-warning" : ""}>
                         {Number(r.consumption).toLocaleString("en-IN")} L
@@ -322,7 +308,7 @@ function ConsumerDashboard() {
             </div>
           )}
 
-          {(readings.data?.length || 0) > 0 && (
+          {(live.data?.history?.length || 0) > 0 && (
             <div className="flex flex-wrap gap-4 border-t pt-4 text-sm">
               <div className="flex items-center gap-2"><Clock className="h-4 w-4 text-muted-foreground" /><span className="text-muted-foreground">Readings:</span> <Badge variant="secondary">{analysis.count}</Badge></div>
               <div className="flex items-center gap-2"><span className="text-muted-foreground">Min:</span> <Badge variant="outline">{analysis.min.toLocaleString("en-IN")} L</Badge></div>

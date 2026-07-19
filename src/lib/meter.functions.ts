@@ -107,6 +107,93 @@ export const listSenseflowDevices = createServerFn({ method: "GET" }).handler(as
   return rows;
 });
 
+// ---- Consumer dashboard (live Senseflow) ----
+
+export const getConsumerDashboardStats = createServerFn({ method: "POST" })
+  .inputValidator((d: unknown) => z.object({
+    consumerId: z.string().uuid(),
+    start: z.string(), // yyyy-mm-dd
+    end: z.string(),   // yyyy-mm-dd
+  }).parse(d))
+  .handler(async ({ data }) => {
+    const token = process.env.SENSEFLOW_API_TOKEN;
+    if (!token) throw new Error("SENSEFLOW_API_TOKEN not configured");
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    const { data: details, error: dErr } = await supabaseAdmin
+      .from("consumer_details")
+      .select("device_id, serial_number, block_id")
+      .eq("user_id", data.consumerId)
+      .maybeSingle();
+    if (dErr) throw new Error(dErr.message);
+    const device = details?.device_id;
+    if (!device) {
+      return {
+        device_id: null as string | null,
+        serial_number: null as string | null,
+        block_id: null as string | null,
+        latest: null as LatestApi | null,
+        totalUsageL: 0,
+        todaysUsageL: 0,
+        thisMonthL: 0,
+        rangeConsumptionL: 0,
+        trend: [] as Array<{ date: string; consumption: number }>,
+        history: [] as Array<{ date: string; opening: number; closing: number; consumption: number }>,
+      };
+    }
+
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const monthPrefix = todayStr.slice(0, 7);
+    const startIso = `${data.start}T00:00:00Z`;
+    const endIso = `${data.end}T23:59:59Z`;
+    const monthStartIso = `${monthPrefix}-01T00:00:00Z`;
+    const monthEndIso = `${todayStr}T23:59:59Z`;
+
+    const [rangeHistory, monthHistory, latest] = await Promise.all([
+      withDeadline(sfHistory(device, startIso, endIso, token), [] as HistoryDay[], 35000),
+      withDeadline(sfHistory(device, monthStartIso, monthEndIso, token), [] as HistoryDay[], 35000),
+      withDeadline(sfLatest(device, token), null as LatestApi | null, 35000),
+    ] as const);
+
+    const trend = rangeHistory
+      .slice()
+      .sort((a, b) => a.reading_date.localeCompare(b.reading_date))
+      .map((d) => ({ date: d.reading_date, consumption: Math.round(consumptionKl(d) * 1000) }));
+
+    const history = rangeHistory
+      .slice()
+      .sort((a, b) => a.reading_date.localeCompare(b.reading_date))
+      .map((d) => ({
+        date: d.reading_date,
+        opening: Math.round(Number(d.opening_reading || 0) * 1000),
+        closing: Math.round(Number(d.closing_reading || 0) * 1000),
+        consumption: Math.round(consumptionKl(d) * 1000),
+      }));
+
+    const rangeConsumptionL = Math.round(rangeHistory.reduce((s, d) => s + consumptionKl(d), 0) * 1000);
+    const thisMonthL = Math.round(monthHistory.reduce((s, d) => s + consumptionKl(d), 0) * 1000);
+    const todayRow = monthHistory.find((d) => d.reading_date === todayStr)
+      ?? rangeHistory.find((d) => d.reading_date === todayStr);
+    const todaysUsageL = todayRow ? Math.round(consumptionKl(todayRow) * 1000) : 0;
+    const latestClosing = monthHistory.at(-1)?.closing_reading ?? rangeHistory.at(-1)?.closing_reading;
+    const totalUsageL = latest?.meter_reading != null
+      ? Math.round(Number(latest.meter_reading) * 1000)
+      : Math.round(Number(latestClosing || 0) * 1000);
+
+    return {
+      device_id: device,
+      serial_number: details?.serial_number ?? null,
+      block_id: details?.block_id ?? null,
+      latest,
+      totalUsageL,
+      todaysUsageL,
+      thisMonthL,
+      rangeConsumptionL,
+      trend,
+      history,
+    };
+  });
+
 // ---- Dashboard aggregation from live Senseflow API ----
 
 type LatestApi = {
