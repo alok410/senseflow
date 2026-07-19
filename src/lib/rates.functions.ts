@@ -1,6 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
 const setRateInput = z.object({
   rate_per_liter: z.number().nonnegative(),
@@ -9,7 +8,6 @@ const setRateInput = z.object({
 });
 
 export const setWaterRate = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => setRateInput.parse(d))
   .handler(async ({ data, context }) => {
     const { data: isAdmin } = await context.supabase.rpc("has_role", {

@@ -1,6 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
 async function assertAdmin(ctx: { supabase: any; userId: string }) {
   const { data, error } = await ctx.supabase.rpc("has_role", {
@@ -18,7 +17,6 @@ const createInput = z.object({
 });
 
 export const createLocation = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => createInput.parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
@@ -42,7 +40,6 @@ const updateInput = z.object({
 });
 
 export const updateLocation = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => updateInput.parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
@@ -54,7 +51,6 @@ export const updateLocation = createServerFn({ method: "POST" })
   });
 
 export const deleteLocation = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context);

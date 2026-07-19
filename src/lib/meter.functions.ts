@@ -1,6 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
 const SENSEFLOW_BASE = "https://apps.samasth.io:8090/api/Senseflow/Flowmeter/latest";
 
@@ -12,7 +11,6 @@ function toIST(iso: string | null | undefined): string | null {
 }
 
 export const fetchAndStoreLatestReading = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ consumerId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     // Authorization: admin, the consumer themselves, or secretary who manages them.

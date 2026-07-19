@@ -1,6 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
 const roleSchema = z.enum(["admin", "secretary", "consumer"]);
 const phoneSchema = z.string().trim().regex(/^\+\d{8,15}$/, "Invalid phone (use +<country><number>)");
@@ -22,7 +21,6 @@ async function assertAdmin(context: { supabase: any; userId: string }) {
 }
 
 export const createUser = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => createUserInput.parse(data))
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
@@ -71,7 +69,6 @@ const setRolesInput = z.object({
 });
 
 export const setUserRoles = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => setRolesInput.parse(data))
   .handler(async ({ data, context }) => {
     await assertAdmin(context);

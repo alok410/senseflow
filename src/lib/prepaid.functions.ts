@@ -1,6 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
 const input = z.object({
   consumerId: z.string().uuid(),
@@ -9,7 +8,6 @@ const input = z.object({
 });
 
 export const addCashBalance = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => input.parse(d))
   .handler(async ({ data, context }) => {
     // Allow admins OR secretaries who manage this consumer.

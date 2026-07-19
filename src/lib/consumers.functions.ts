@@ -1,6 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
 const phoneSchema = z.string().trim().regex(/^\+\d{8,15}$/, "Invalid phone (use +<country><number>)");
 
@@ -22,7 +21,6 @@ const createInput = z.object({
 });
 
 export const createConsumer = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => createInput.parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
@@ -82,7 +80,6 @@ const updateInput = z.object({
 });
 
 export const updateConsumer = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => updateInput.parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
@@ -114,7 +111,6 @@ export const updateConsumer = createServerFn({ method: "POST" })
   });
 
 export const deactivateConsumer = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ userId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
@@ -126,7 +122,6 @@ export const deactivateConsumer = createServerFn({ method: "POST" })
   });
 
 export const deleteConsumer = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ userId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
@@ -169,7 +164,6 @@ const DEMO_CONSUMERS: Array<{
 ];
 
 export const seedDemoConsumers = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) =>
     z.object({ locationId: z.string().uuid().optional().nullable() }).parse(d ?? {}),
   )

@@ -1,6 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
 const phoneSchema = z.string().trim().regex(/^\+\d{8,15}$/, "Invalid phone (use +<country><number>)");
 
@@ -20,7 +19,6 @@ const createInput = z.object({
 });
 
 export const createSecretary = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => createInput.parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
@@ -66,7 +64,6 @@ const updateInput = z.object({
 });
 
 export const updateSecretary = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => updateInput.parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
@@ -93,7 +90,6 @@ export const updateSecretary = createServerFn({ method: "POST" })
   });
 
 export const deleteSecretary = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ userId: z.string().uuid() }).parse(d))
   .handler(async ({ data, context }) => {
     await assertAdmin(context);
