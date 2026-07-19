@@ -212,7 +212,7 @@ async function withDeadline<T>(promise: Promise<T>, fallback: T, timeoutMs: numb
 
 async function sfLatest(device: string, token: string): Promise<LatestApi | null> {
   try {
-    const r = await fetchWithTimeout(`${SENSEFLOW_BASE}?device=${encodeURIComponent(device)}`, token, 3000);
+    const r = await fetchWithTimeout(`${SENSEFLOW_BASE}?device=${encodeURIComponent(device)}`, token, 30000);
     if (!r.ok) return null;
     return (await r.json()) as LatestApi;
   } catch { return null; }
@@ -220,7 +220,7 @@ async function sfLatest(device: string, token: string): Promise<LatestApi | null
 async function sfHistory(device: string, startIso: string, endIso: string, token: string): Promise<HistoryDay[]> {
   try {
     const url = `${SENSEFLOW_HISTORY}?device=${encodeURIComponent(device)}&start=${encodeURIComponent(startIso)}&end=${encodeURIComponent(endIso)}`;
-    const r = await fetchWithTimeout(url, token, 4500);
+    const r = await fetchWithTimeout(url, token, 30000);
     if (!r.ok) return [];
     const j = (await r.json()) as HistoryApi | HistoryDay[];
     if (Array.isArray(j)) return j;
@@ -322,21 +322,14 @@ export const getAdminDashboardStats = createServerFn({ method: "POST" })
 
     // Keep dashboard values partial and responsive: one slow sub-meter must not zero the main meter.
     const [mainHistory, mainLatest] = await Promise.all([
-      withDeadline(sfHistory(MAIN_METER_DEVICE, startIso, endIso, token), [] as HistoryDay[], 8000),
-      withDeadline(sfLatest(MAIN_METER_DEVICE, token), null as LatestApi | null, 6000),
+      withDeadline(sfHistory(MAIN_METER_DEVICE, startIso, endIso, token), [] as HistoryDay[], 35000),
+      withDeadline(sfLatest(MAIN_METER_DEVICE, token), null as LatestApi | null, 35000),
     ] as const);
-    const [analyticsHistories, analyticsLatest] = await Promise.all([
-      withDeadline(
-        mapWithConcurrency(analyticsDevices, 4, (d) => sfHistory(d, startIso, endIso, token)),
-        analyticsDevices.map(() => [] as HistoryDay[]),
-        16000,
-      ),
-      withDeadline(
-        mapWithConcurrency(analyticsDevices, 4, (d) => sfLatest(d, token)),
-        analyticsDevices.map(() => null as LatestApi | null),
-        10000,
-      ),
-    ] as const);
+    const analyticsHistories = await withDeadline(
+      mapWithConcurrency(analyticsDevices, Math.max(1, analyticsDevices.length), (d) => sfHistory(d, startIso, endIso, token)),
+      analyticsDevices.map(() => [] as HistoryDay[]),
+      40000,
+    );
 
     // Main meter overview (values in kilolitres -> convert to litres)
     const todayStr = new Date().toISOString().slice(0, 10);
@@ -354,7 +347,7 @@ export const getAdminDashboardStats = createServerFn({ method: "POST" })
       const mHist = await withDeadline(
         sfHistory(MAIN_METER_DEVICE, `${monthPrefix}-01T00:00:00Z`, `${todayStr}T23:59:59Z`, token),
         [] as HistoryDay[],
-        4500,
+        35000,
       );
       monthFull = mHist.length ? mHist.reduce((s, r) => s + Number(r.consumption || 0), 0) : monthFull;
       if (!todaysUsageKl) {
@@ -366,10 +359,7 @@ export const getAdminDashboardStats = createServerFn({ method: "POST" })
     const totalUsageKl = mainLatest?.meter_reading != null
       ? Number(mainLatest.meter_reading)
       : Number(latestMainHistory?.closing_reading || 0);
-    const lastLiveData = [...analyticsLatest].reverse().find(Boolean);
-    const flowRate = lastLiveData?.flow_rate != null
-      ? Number(lastLiveData.flow_rate)
-      : Number(mainLatest?.flow_rate || 0);
+    const flowRate = Number(mainLatest?.flow_rate || 0);
 
     // Daily consumption trend (sum across analytics devices per day)
     const byDay = new Map<string, number>();
