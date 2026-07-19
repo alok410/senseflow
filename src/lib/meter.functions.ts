@@ -21,13 +21,12 @@ export const fetchAndStoreLatestReading = createServerFn({ method: "POST" })
 
     const { data: details, error: dErr } = await supabaseAdmin
       .from("consumer_details")
-      .select("device_id, meter_id, serial_number")
+      .select("device_id, serial_number")
       .eq("user_id", data.consumerId).maybeSingle();
     if (dErr) throw new Error(dErr.message);
-    // Senseflow API needs the meter identifier (e.g. USFL_WM0003).
-    // Prefer meter_id (matches the MERN model's meterId); fall back to device_id.
-    const device = details?.meter_id || details?.device_id;
-    if (!device) throw new Error("This consumer has no meter_id (or device_id) configured.");
+    // Senseflow API takes the device identifier (e.g. USFL_WM0003) as the `device` param.
+    const device = details?.device_id;
+    if (!device) throw new Error("This consumer has no Senseflow device_id (USFL_WMxxxx) configured.");
 
     const url = `${SENSEFLOW_BASE}?device=${encodeURIComponent(device)}`;
     const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
@@ -81,3 +80,27 @@ export const fetchAndStoreLatestReading = createServerFn({ method: "POST" })
     if (iErr) throw new Error(iErr.message);
     return { skipped: false, reading: inserted };
   });
+
+export const listSenseflowDevices = createServerFn({ method: "GET" }).handler(async () => {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { data: details, error } = await supabaseAdmin
+    .from("consumer_details")
+    .select("user_id, device_id, serial_number, block_id")
+    .not("device_id", "is", null);
+  if (error) throw new Error(error.message);
+  const ids = (details ?? []).map((d) => d.user_id);
+  const { data: profiles } = ids.length
+    ? await supabaseAdmin.from("profiles").select("id, full_name, phone").in("id", ids)
+    : { data: [] as any[] };
+  const pmap = new Map((profiles ?? []).map((p: any) => [p.id, p]));
+  const rows = (details ?? []).map((d: any) => ({
+    consumerId: d.user_id,
+    deviceId: d.device_id as string,
+    serialNumber: d.serial_number as string | null,
+    block: d.block_id as string | null,
+    name: (pmap.get(d.user_id) as any)?.full_name ?? null,
+    phone: (pmap.get(d.user_id) as any)?.phone ?? null,
+  }));
+  rows.sort((a, b) => (a.block ?? "").localeCompare(b.block ?? "", undefined, { numeric: true }));
+  return rows;
+});

@@ -8,6 +8,7 @@ export const ADMIN_NAV: NavItem[] = [
   { label: "Locations", href: "/admin/locations" },
   { label: "Rates", href: "/admin/rates" },
   { label: "Invoices", href: "/admin/invoices" },
+  { label: "Senseflow Devices", href: "/admin/devices" },
   { label: "Analytics", href: "/admin/analytics" },
 ];
 

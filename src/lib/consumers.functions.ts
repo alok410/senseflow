@@ -197,6 +197,7 @@ export const seedDemoConsumers = createServerFn({ method: "POST" })
       await supabaseAdmin.from("user_roles").insert({ user_id: uid, role: "consumer" });
       await supabaseAdmin.from("consumer_details").upsert({
         user_id: uid,
+        device_id: c.meter,
         meter_id: c.meter,
         serial_number: c.serial,
         block_id: c.block,

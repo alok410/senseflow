@@ -22,6 +22,7 @@ import { Route as AuthenticatedAdminSecretariesRouteImport } from './routes/_aut
 import { Route as AuthenticatedAdminRatesRouteImport } from './routes/_authenticated/admin/rates'
 import { Route as AuthenticatedAdminLocationsRouteImport } from './routes/_authenticated/admin/locations'
 import { Route as AuthenticatedAdminInvoicesRouteImport } from './routes/_authenticated/admin/invoices'
+import { Route as AuthenticatedAdminDevicesRouteImport } from './routes/_authenticated/admin/devices'
 import { Route as AuthenticatedAdminConsumersRouteImport } from './routes/_authenticated/admin/consumers'
 import { Route as AuthenticatedAdminAnalyticsRouteImport } from './routes/_authenticated/admin/analytics'
 import { Route as AuthenticatedAdminConsumersIdRouteImport } from './routes/_authenticated/admin/consumers.$id'
@@ -96,6 +97,12 @@ const AuthenticatedAdminInvoicesRoute =
     path: '/admin/invoices',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedAdminDevicesRoute =
+  AuthenticatedAdminDevicesRouteImport.update({
+    id: '/admin/devices',
+    path: '/admin/devices',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedAdminConsumersRoute =
   AuthenticatedAdminConsumersRouteImport.update({
     id: '/admin/consumers',
@@ -121,6 +128,7 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/admin/analytics': typeof AuthenticatedAdminAnalyticsRoute
   '/admin/consumers': typeof AuthenticatedAdminConsumersRouteWithChildren
+  '/admin/devices': typeof AuthenticatedAdminDevicesRoute
   '/admin/invoices': typeof AuthenticatedAdminInvoicesRoute
   '/admin/locations': typeof AuthenticatedAdminLocationsRoute
   '/admin/rates': typeof AuthenticatedAdminRatesRoute
@@ -138,6 +146,7 @@ export interface FileRoutesByTo {
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/admin/analytics': typeof AuthenticatedAdminAnalyticsRoute
   '/admin/consumers': typeof AuthenticatedAdminConsumersRouteWithChildren
+  '/admin/devices': typeof AuthenticatedAdminDevicesRoute
   '/admin/invoices': typeof AuthenticatedAdminInvoicesRoute
   '/admin/locations': typeof AuthenticatedAdminLocationsRoute
   '/admin/rates': typeof AuthenticatedAdminRatesRoute
@@ -157,6 +166,7 @@ export interface FileRoutesById {
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/admin/analytics': typeof AuthenticatedAdminAnalyticsRoute
   '/_authenticated/admin/consumers': typeof AuthenticatedAdminConsumersRouteWithChildren
+  '/_authenticated/admin/devices': typeof AuthenticatedAdminDevicesRoute
   '/_authenticated/admin/invoices': typeof AuthenticatedAdminInvoicesRoute
   '/_authenticated/admin/locations': typeof AuthenticatedAdminLocationsRoute
   '/_authenticated/admin/rates': typeof AuthenticatedAdminRatesRoute
@@ -176,6 +186,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/admin/analytics'
     | '/admin/consumers'
+    | '/admin/devices'
     | '/admin/invoices'
     | '/admin/locations'
     | '/admin/rates'
@@ -193,6 +204,7 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/admin/analytics'
     | '/admin/consumers'
+    | '/admin/devices'
     | '/admin/invoices'
     | '/admin/locations'
     | '/admin/rates'
@@ -211,6 +223,7 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard'
     | '/_authenticated/admin/analytics'
     | '/_authenticated/admin/consumers'
+    | '/_authenticated/admin/devices'
     | '/_authenticated/admin/invoices'
     | '/_authenticated/admin/locations'
     | '/_authenticated/admin/rates'
@@ -322,6 +335,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAdminInvoicesRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/admin/devices': {
+      id: '/_authenticated/admin/devices'
+      path: '/admin/devices'
+      fullPath: '/admin/devices'
+      preLoaderRoute: typeof AuthenticatedAdminDevicesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/admin/consumers': {
       id: '/_authenticated/admin/consumers'
       path: '/admin/consumers'
@@ -364,6 +384,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedAdminAnalyticsRoute: typeof AuthenticatedAdminAnalyticsRoute
   AuthenticatedAdminConsumersRoute: typeof AuthenticatedAdminConsumersRouteWithChildren
+  AuthenticatedAdminDevicesRoute: typeof AuthenticatedAdminDevicesRoute
   AuthenticatedAdminInvoicesRoute: typeof AuthenticatedAdminInvoicesRoute
   AuthenticatedAdminLocationsRoute: typeof AuthenticatedAdminLocationsRoute
   AuthenticatedAdminRatesRoute: typeof AuthenticatedAdminRatesRoute
@@ -380,6 +401,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAdminAnalyticsRoute: AuthenticatedAdminAnalyticsRoute,
   AuthenticatedAdminConsumersRoute:
     AuthenticatedAdminConsumersRouteWithChildren,
+  AuthenticatedAdminDevicesRoute: AuthenticatedAdminDevicesRoute,
   AuthenticatedAdminInvoicesRoute: AuthenticatedAdminInvoicesRoute,
   AuthenticatedAdminLocationsRoute: AuthenticatedAdminLocationsRoute,
   AuthenticatedAdminRatesRoute: AuthenticatedAdminRatesRoute,
