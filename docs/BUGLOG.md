@@ -1,5 +1,13 @@
 # Bug Log
 
+## [v1.0.6] – 2026-07-19 (13:40)
+
+### Fixed
+- Bug: Senseflow API was called with the wrong identifier — the seed put the USFL_WMxxxx value in `meter_id`, and the fetcher only fell back to `device_id`, so the semantics were inverted.
+  - Cause: The Senseflow endpoint expects the `device_id` (e.g. `USFL_WM0003`) as its `device` query parameter, but consumers were seeded with that value in `meter_id`.
+  - Fix: Backfilled `consumer_details.device_id` from `meter_id` for existing rows, updated `seedDemoConsumers` to write the USFL id into `device_id` too, and changed `fetchAndStoreLatestReading` to use `device_id` only. Added `listSenseflowDevices` server function and a new Admin → "Senseflow Devices" page that lists every configured device_id with a "Fetch now" action.
+  - Files: src/lib/meter.functions.ts, src/lib/consumers.functions.ts, src/lib/nav.ts, src/routes/_authenticated/admin/devices.tsx, supabase data backfill
+
 ## [v1.0.5] – 2026-07-19 (13:10)
 
 ### Fixed
