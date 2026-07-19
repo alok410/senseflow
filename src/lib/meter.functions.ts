@@ -339,11 +339,7 @@ export const getAdminDashboardStats = createServerFn({ method: "POST" })
             35000,
           )
         : Promise.resolve([] as HistoryDay[]),
-      withDeadline(
-        mapWithConcurrency(analyticsDevices, 1, (d) => sfHistory(d, startIso, endIso, token)),
-        analyticsDevices.map(() => [] as HistoryDay[]),
-        120000,
-      ),
+      mapWithConcurrency(analyticsDevices, 5, (d) => sfHistory(d, startIso, endIso, token)),
     ] as const);
 
     // Main meter overview (values in kilolitres -> convert to litres)

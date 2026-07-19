@@ -5,7 +5,7 @@
 ### Fixed
 - Bug: Admin dashboard values dropped back to 0 / “No consumption in range.”
   - Cause: The dashboard was reading the empty local `meter_readings` table for consumption, while the real readings are available from the live Senseflow API.
-  - Fix: Reconnected the Admin dashboard to the live dashboard stats server function, widened the live main-meter deadline to match the slow endpoint, gave each sub-meter history request its own 12s timeout, matched the original MERN dashboard's sequential sub-meter history loop so the Senseflow API does not drop responses as zero, fetched the main month total in parallel, removed extra sub-meter latest calls, and clamped reset/negative consumption readings to zero in dashboard totals.
+  - Fix: Reconnected the Admin dashboard to the live dashboard stats server function, widened the live main-meter deadline to match the slow endpoint, gave each sub-meter history request its own 12s timeout, removed the all-or-nothing sub-meter batch deadline so slow devices cannot discard valid device responses as zero, fetched the main month total in parallel, removed extra sub-meter latest calls, and clamped reset/negative consumption readings to zero in dashboard totals.
   - Files: src/routes/_authenticated/admin/index.tsx, src/lib/meter.functions.ts
 
 ## [v1.0.10] – 2026-07-19 (15:05)
