@@ -148,7 +148,7 @@ const DEMO_CONSUMERS: Array<{
   { block: "11B", name: "JAGDISH PRAJAPTI",  meter: "USFL_WM0024", serial: "24121200033220", email: "h11b@gmail.com" },
   { block: "11A", name: "JAGDISH PRAJAPTI",  meter: "USFL_WM0004", serial: "24110200025067", email: "h11a@gmail.com" },
   { block: "20",  name: "MUKESH PATEL",      meter: "USFL_WM0005", serial: "24110200025247", email: "h20@gmail.com" },
-  { block: null,  name: "No Consumer 2",     meter: "USFL_WM0020", serial: null,             email: "hna2@gmail.com" },
+  { block: "Na",  name: "No Consumer 2",     meter: "USFL_WM0020", serial: null,             email: "hna2@gmail.com" },
   { block: "8",   name: "R. P. PATEL",       meter: "USFL_WM0016", serial: "24110200025511", email: "h8@gmail.com" },
   { block: "50",  name: "Test",              meter: "USFL_WM0010", serial: "50",             email: "test@gmail.com" },
   { block: "7",   name: "V. K. PATEL",       meter: "USFL_WM0017", serial: "24110200025502", email: "h7@gmail.com" },
