@@ -16,6 +16,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { useSession } from "@/hooks/use-session";
 import { requestLoginOtp, verifyLoginOtp } from "@/lib/otp.functions";
+import { GradientWave } from "@/components/ui/gradient-wave";
 
 type Role = "admin" | "secretary" | "consumer";
 
@@ -103,13 +104,15 @@ function AuthPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-background via-background to-primary/5 px-4">
-      <div className="w-full max-w-md">
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background px-4">
+      <GradientWave className="opacity-70" />
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-background/30 via-background/50 to-background/80" />
+      <div className="relative z-10 w-full max-w-md">
         <div className="mb-6 flex items-center justify-center gap-2">
           <Droplets className="h-7 w-7 text-primary" />
           <span className="text-2xl font-bold">SensorFlow</span>
         </div>
-        <Card>
+        <Card className="border-white/30 bg-card/70 shadow-2xl backdrop-blur-xl">
           <CardHeader>
             <CardTitle>{step === "phone" ? "Sign in" : "Verify code"}</CardTitle>
             <CardDescription>

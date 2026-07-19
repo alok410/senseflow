@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Droplets, BarChart3, Users, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { GradientWave } from "@/components/ui/gradient-wave";
 
 export const Route = createFileRoute("/")({
   component: Landing,
@@ -28,8 +29,10 @@ function Landing() {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5">
-      <header className="border-b bg-background/80 backdrop-blur">
+    <div className="relative min-h-screen overflow-hidden bg-background">
+      <GradientWave className="opacity-70" />
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-background/40 via-background/60 to-background" />
+      <header className="relative z-10 border-b border-white/20 bg-background/40 backdrop-blur-xl">
         <div className="container mx-auto flex items-center justify-between px-4 py-4">
           <div className="flex items-center gap-2">
             <Droplets className="h-6 w-6 text-primary" />
@@ -38,13 +41,13 @@ function Landing() {
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-16 md:py-24">
+      <main className="relative z-10 container mx-auto px-4 py-16 md:py-24">
         <div className="mx-auto max-w-3xl text-center">
           <h1 className="text-4xl font-bold tracking-tight md:text-6xl">
             Smart water meter management,
             <span className="text-primary"> made simple.</span>
           </h1>
-          <p className="mt-6 text-lg text-muted-foreground">
+          <p className="mt-6 text-lg text-foreground/70">
             Choose a role below to open its dashboard.
           </p>
         </div>
@@ -54,7 +57,7 @@ function Landing() {
             <button
               key={f.role}
               onClick={() => enter(f.role)}
-              className="rounded-lg border bg-card p-6 text-left transition-colors hover:border-primary hover:bg-accent"
+              className="group rounded-xl border border-white/30 bg-card/60 p-6 text-left shadow-lg backdrop-blur-xl transition-all hover:-translate-y-1 hover:border-primary/60 hover:bg-card/80 hover:shadow-xl"
             >
               <f.icon className="h-8 w-8 text-primary" />
               <h3 className="mt-4 text-lg font-semibold">{f.title}</h3>

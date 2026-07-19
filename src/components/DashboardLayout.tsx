@@ -16,6 +16,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 import { useActiveRole, type AppRole } from "@/hooks/use-session";
+import { GradientWave } from "@/components/ui/gradient-wave";
 
 export interface NavItem {
   label: string;
@@ -65,8 +66,12 @@ export function DashboardLayout({ children, navItems, title, userName, userPhone
   };
 
   return (
-    <div className="min-h-screen bg-muted/30">
-      <header className="sticky top-0 z-40 border-b bg-background">
+    <div className="relative min-h-screen overflow-hidden bg-background">
+      <div className="pointer-events-none fixed inset-0 -z-10">
+        <GradientWave className="opacity-40" />
+        <div className="absolute inset-0 bg-gradient-to-b from-background/70 via-background/85 to-background" />
+      </div>
+      <header className="sticky top-0 z-40 border-b border-white/20 bg-background/60 backdrop-blur-xl">
         <div className="container mx-auto flex h-16 items-center justify-between px-4">
           <div className="flex items-center gap-6">
             <Link to="/dashboard" className="flex items-center gap-2">
