@@ -297,6 +297,25 @@ export const getAdminDashboardStats = createServerFn({ method: "POST" })
     // Analytics devices exclude the Main Meter (avoid double-count with sub meters)
     const analyticsDevices = details.map((d) => d.device_id).filter((id) => id !== MAIN_METER_DEVICE);
 
+    if (process.env.SENSEFLOW_DISABLE_LIVE === "1") {
+      return {
+        consumers: details.length,
+        secretaries: secretaryCount,
+        locations: locationsRes.count ?? 0,
+        mainMeter: {
+          available: mainInSet,
+          todaysUsageL: 0,
+          thisMonthL: 0,
+          totalUsageL: 0,
+          lastReadingAt: null,
+        },
+        flowRate: 0,
+        totalConsumptionL: 0,
+        trend: [],
+        leaders: [],
+      };
+    }
+
     // Fetch histories for analytics + main meter in parallel
     const [mainHistory, analyticsHistories, analyticsLatest, mainLatest] = await Promise.all([
       sfHistory(MAIN_METER_DEVICE, startIso, endIso, token),
