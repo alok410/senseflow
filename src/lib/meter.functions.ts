@@ -170,6 +170,10 @@ function canonicalizeConsumers(rows: DashboardConsumer[]): DashboardConsumer[] {
   });
 }
 
+function consumptionKl(day: HistoryDay): number {
+  return Math.max(0, Number(day.consumption || 0));
+}
+
 async function fetchWithTimeout(url: string, token: string, timeoutMs = 8000): Promise<Response> {
   const controller = new AbortController();
   let timeout: ReturnType<typeof setTimeout> | undefined;
@@ -203,9 +207,16 @@ async function mapWithConcurrency<T, R>(items: T[], limit: number, worker: (item
   return results;
 }
 
+async function withDeadline<T>(promise: Promise<T>, fallback: T, timeoutMs: number): Promise<T> {
+  return await Promise.race([
+    promise.catch(() => fallback),
+    new Promise<T>((resolve) => setTimeout(() => resolve(fallback), timeoutMs)),
+  ]);
+}
+
 async function sfLatest(device: string, token: string): Promise<LatestApi | null> {
   try {
-    const r = await fetchWithTimeout(`${SENSEFLOW_BASE}?device=${encodeURIComponent(device)}`, token, 3000);
+    const r = await fetchWithTimeout(`${SENSEFLOW_BASE}?device=${encodeURIComponent(device)}`, token, 30000);
     if (!r.ok) return null;
     return (await r.json()) as LatestApi;
   } catch { return null; }
@@ -213,7 +224,7 @@ async function sfLatest(device: string, token: string): Promise<LatestApi | null
 async function sfHistory(device: string, startIso: string, endIso: string, token: string): Promise<HistoryDay[]> {
   try {
     const url = `${SENSEFLOW_HISTORY}?device=${encodeURIComponent(device)}&start=${encodeURIComponent(startIso)}&end=${encodeURIComponent(endIso)}`;
-    const r = await fetchWithTimeout(url, token, 4500);
+    const r = await fetchWithTimeout(url, token, 12000);
     if (!r.ok) return [];
     const j = (await r.json()) as HistoryApi | HistoryDay[];
     if (Array.isArray(j)) return j;
@@ -313,60 +324,65 @@ export const getAdminDashboardStats = createServerFn({ method: "POST" })
       leaders: [] as Array<{ id: string; name: string; device_id: string; consumption: number }>,
     };
 
-    // Keep the dashboard responsive. If the external API is unavailable, return base counts immediately.
-    const livePromise = Promise.all([
-      sfHistory(MAIN_METER_DEVICE, startIso, endIso, token),
-      mapWithConcurrency(analyticsDevices, Math.max(1, analyticsDevices.length), (d) => sfHistory(d, startIso, endIso, token)),
-      mapWithConcurrency(analyticsDevices, Math.max(1, analyticsDevices.length), (d) => sfLatest(d, token)),
-      sfLatest(MAIN_METER_DEVICE, token),
-    ] as const);
-    const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 5500));
-    const liveResult = await Promise.race([livePromise, timeoutPromise]);
-    if (!liveResult) return fastEmpty;
-    const [mainHistory, analyticsHistories, analyticsLatest, mainLatest] = liveResult;
-
-    // Main meter overview (values in kilolitres -> convert to litres)
     const todayStr = new Date().toISOString().slice(0, 10);
     const monthPrefix = todayStr.slice(0, 7); // yyyy-mm
+    const needsMonthWideHistory = !data.start.startsWith(monthPrefix) || data.start > `${monthPrefix}-01`;
+
+    // Keep dashboard values partial and responsive: one slow sub-meter must not zero the main meter.
+    const [mainHistory, mainLatest, monthWideHistory, analyticsHistories] = await Promise.all([
+      withDeadline(sfHistory(MAIN_METER_DEVICE, startIso, endIso, token), [] as HistoryDay[], 35000),
+      withDeadline(sfLatest(MAIN_METER_DEVICE, token), null as LatestApi | null, 35000),
+      needsMonthWideHistory
+        ? withDeadline(
+            sfHistory(MAIN_METER_DEVICE, `${monthPrefix}-01T00:00:00Z`, `${todayStr}T23:59:59Z`, token),
+            [] as HistoryDay[],
+            35000,
+          )
+        : Promise.resolve([] as HistoryDay[]),
+      mapWithConcurrency(analyticsDevices, 5, (d) => sfHistory(d, startIso, endIso, token)),
+    ] as const);
+
+    // Main meter overview (values in kilolitres -> convert to litres)
     let todaysUsageKl = 0;
     let thisMonthKl = 0;
     for (const d of mainHistory) {
-      const c = Number(d.consumption || 0);
+      const c = consumptionKl(d);
       if (d.reading_date === todayStr) todaysUsageKl += c;
       if (d.reading_date.startsWith(monthPrefix)) thisMonthKl += c;
     }
     // For "This Month" we may need broader range than requested; fetch a month-wide slice if needed
     let monthFull = thisMonthKl;
-    if (!data.start.startsWith(monthPrefix) || data.start > `${monthPrefix}-01`) {
-      const mHist = await sfHistory(MAIN_METER_DEVICE, `${monthPrefix}-01T00:00:00Z`, `${todayStr}T23:59:59Z`, token);
-      monthFull = mHist.reduce((s, r) => s + Number(r.consumption || 0), 0);
+    if (needsMonthWideHistory) {
+      monthFull = monthWideHistory.length ? monthWideHistory.reduce((s, r) => s + consumptionKl(r), 0) : monthFull;
       if (!todaysUsageKl) {
-        const t = mHist.find((r) => r.reading_date === todayStr);
-        todaysUsageKl = t ? Number(t.consumption || 0) : 0;
+        const t = monthWideHistory.find((r) => r.reading_date === todayStr);
+        todaysUsageKl = t ? consumptionKl(t) : 0;
       }
     }
-    const totalUsageKl = mainLatest?.meter_reading != null ? Number(mainLatest.meter_reading) : 0;
-    const lastLiveData = [...analyticsLatest].reverse().find(Boolean);
-    const flowRate = lastLiveData?.flow_rate != null ? Number(lastLiveData.flow_rate) : 0;
+    const latestMainHistory = mainHistory.at(-1);
+    const totalUsageKl = mainLatest?.meter_reading != null
+      ? Number(mainLatest.meter_reading)
+      : Number(latestMainHistory?.closing_reading || 0);
+    const flowRate = Number(mainLatest?.flow_rate || 0);
 
     // Daily consumption trend (sum across analytics devices per day)
     const byDay = new Map<string, number>();
     for (const days of analyticsHistories) {
       for (const d of days) {
-        byDay.set(d.reading_date, (byDay.get(d.reading_date) || 0) + Number(d.consumption || 0));
+        byDay.set(d.reading_date, (byDay.get(d.reading_date) || 0) + consumptionKl(d));
       }
     }
     const trend = Array.from(byDay.entries())
       .sort((a, b) => a[0].localeCompare(b[0]))
       .map(([date, kl]) => ({ date, consumption: Math.round(kl * 1000) }));
     const totalConsumptionL = Math.round(
-      analyticsHistories.reduce((s, days) => s + days.reduce((a, d) => a + Number(d.consumption || 0), 0), 0) * 1000,
+      analyticsHistories.reduce((s, days) => s + days.reduce((a, d) => a + consumptionKl(d), 0), 0) * 1000,
     );
 
     // Leaderboard (top consumers in range)
     const groupedByDevice = new Map<string, { device_id: string; total_l: number; detail: DashboardConsumer }>();
     analyticsDevices.forEach((dev, i) => {
-      const total = Math.round(analyticsHistories[i].reduce((a, d) => a + Number(d.consumption || 0), 0) * 1000);
+      const total = Math.round(analyticsHistories[i].reduce((a, d) => a + consumptionKl(d), 0) * 1000);
       const existing = groupedByDevice.get(dev);
       if (existing) existing.total_l += total;
       else groupedByDevice.set(dev, { device_id: dev, total_l: total, detail: details[i] });
@@ -390,11 +406,11 @@ export const getAdminDashboardStats = createServerFn({ method: "POST" })
       secretaries: secretaryCount,
       locations: locationsRes.count ?? 0,
       mainMeter: {
-        available: mainInSet && !!mainLatest,
+        available: mainInSet && (!!mainLatest || mainHistory.length > 0),
         todaysUsageL: Math.round(todaysUsageKl * 1000),
         thisMonthL: Math.round(monthFull * 1000),
         totalUsageL: Math.round(totalUsageKl * 1000),
-        lastReadingAt: mainLatest?.reading_datetime ?? null,
+        lastReadingAt: mainLatest?.reading_datetime ?? latestMainHistory?.reading_date ?? null,
       },
       flowRate,
       totalConsumptionL,

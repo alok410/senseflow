@@ -1,34 +1,34 @@
-## Goal
-Senseflow API calls should be made with the consumer's `device_id` (the `USFL_WMxxxx` value) as the `device` query parameter. Today the seed put those IDs into `meter_id`, and the fetcher fell back to `device_id` only if `meter_id` was empty. Also show which Senseflow IDs the app is actually using.
+## Plan: Make dashboard values stop showing 0
 
-## Changes
+### Confirmed issue
+- The local `meter_readings` table currently has **0 rows**, so any dashboard card or chart that reads only local stored readings will show `0` / “No consumption in range.”
+- The app does have **26 configured devices**, including the main meter `USFL_FL7053`, so the dashboard should use the external Senseflow API for live totals and only fall back to local readings when live data is unavailable.
 
-1. **`src/lib/meter.functions.ts`** — use `device_id` only.
-   - Select `device_id, serial_number` from `consumer_details`.
-   - Send `?device=${device_id}` to Senseflow.
-   - Error message: "This consumer has no Senseflow device_id (USFL_WMxxxx) configured."
-   - Store the same `device_id` value in `meter_readings.meter_id` (that column is just a label on the reading row).
+### What I’ll change
+1. **Restore live dashboard data path**
+   - Update the Admin dashboard to call the existing backend dashboard stats function again for:
+     - Main Meter Today
+     - Main Meter This Month
+     - Main Meter Total Usage
+     - Flow rate
+     - Consumption trend
+     - Top consumers
 
-2. **Data backfill (migration)** — move existing USFL values into `device_id`.
-   ```sql
-   UPDATE public.consumer_details
-   SET device_id = meter_id
-   WHERE device_id IS NULL AND meter_id ILIKE 'USFL\_%';
-   ```
-   (Leave `meter_id` populated too so old UI columns keep rendering; nothing depends on it being empty.)
+2. **Keep filters responsive**
+   - Keep locations, consumer list, secretary count, and dropdown filters loaded directly from the database so filters don’t get stuck waiting for the external API.
 
-3. **`src/lib/consumers.functions.ts` — `seedDemoConsumers`**
-   - Insert the `USFL_WMxxxx` value into `device_id` (currently goes into `meter_id`). Keep `serial_number` and `block_id` as-is.
+3. **Make live API failure safe**
+   - Ensure the dashboard does not become blank if one Senseflow device is slow/failing.
+   - Show partial live values where available, and a clear fallback state only for missing sections.
 
-4. **New server function `listSenseflowDevices`** in `src/lib/meter.functions.ts`
-   - Returns `[{ consumerId, name, block, deviceId, serialNumber }]` for every consumer with a non-null `device_id`, ordered by block.
+4. **Verify data mapping**
+   - Ensure the backend uses `device_id` values like `USFL_FL7053` / `USFL_WMxxxx` as the Senseflow API parameter.
+   - Ensure the main meter is excluded from consumer counts/top-consumer lists but included in the Main Meter Overview.
 
-5. **Admin UI — new page `src/routes/_authenticated/admin/devices.tsx`**
-   - Simple table: Block · Name · Senseflow device_id · Serial · "Fetch now" button (calls `fetchAndStoreLatestReading`).
-   - Add nav entry "Senseflow Devices" for admin in `src/lib/nav.ts`.
+5. **Update bug log**
+   - Add a new top entry in `docs/BUGLOG.md` with the next patch version, per your project rule.
 
-6. **BUGLOG** — append `v1.0.6` entry describing the switch to `device_id` + backfill.
-
-## Out of scope
-- No auth changes.
-- No change to how readings are stored/aggregated beyond the identifier field.
+### Files expected to change
+- `src/routes/_authenticated/admin/index.tsx`
+- `src/lib/meter.functions.ts` if the live stats function needs timeout/fallback adjustments
+- `docs/BUGLOG.md`
