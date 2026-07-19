@@ -254,7 +254,7 @@ function AdminDashboard() {
                   <Line type="monotone" dataKey="consumption" stroke="hsl(var(--primary))" />
                 </LineChart>
               </ResponsiveContainer>
-            ) : <p className="text-sm text-muted-foreground">{dash.isLoading ? "Loading from Senseflow…" : "No consumption in range."}</p>}
+            ) : <p className="text-sm text-muted-foreground">{localReadings.isLoading ? "Loading readings…" : "No consumption in range."}</p>}
           </CardContent>
         </Card>
 
