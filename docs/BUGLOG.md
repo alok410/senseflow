@@ -1,5 +1,13 @@
 # Bug Log
 
+## [v1.0.12] – 2026-07-19 (15:40)
+
+### Fixed
+- Bug: Admin dashboard totals and trend didn't match the reference system for the last 7 days.
+  - Cause: `consumptionKl` clamped negative daily consumption to 0, but the reference dashboard uses raw `closing - opening` values (which can go negative on meter resets), so totals and the trend line diverged.
+  - Fix: Removed the `Math.max(0, ...)` clamp so daily consumption is passed through as-is, matching the reference dashboard.
+  - Files: src/lib/meter.functions.ts
+
 ## [v1.0.11] – 2026-07-19 (15:25)
 
 ### Fixed
