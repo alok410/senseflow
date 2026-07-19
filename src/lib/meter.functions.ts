@@ -183,6 +183,19 @@ async function fetchWithTimeout(url: string, token: string, timeoutMs = 8000): P
   }
 }
 
+async function mapWithConcurrency<T, R>(items: T[], limit: number, worker: (item: T, index: number) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const current = next++;
+      results[current] = await worker(items[current], current);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
 async function sfLatest(device: string, token: string): Promise<LatestApi | null> {
   try {
     const r = await fetchWithTimeout(`${SENSEFLOW_BASE}?device=${encodeURIComponent(device)}`, token, 6000);
@@ -280,8 +293,8 @@ export const getAdminDashboardStats = createServerFn({ method: "POST" })
     // Fetch histories for analytics + main meter in parallel
     const [mainHistory, analyticsHistories, analyticsLatest, mainLatest] = await Promise.all([
       sfHistory(MAIN_METER_DEVICE, startIso, endIso, token),
-      Promise.all(analyticsDevices.map((d) => sfHistory(d, startIso, endIso, token))),
-      Promise.all(analyticsDevices.map((d) => sfLatest(d, token))),
+      mapWithConcurrency(analyticsDevices, 6, (d) => sfHistory(d, startIso, endIso, token)),
+      mapWithConcurrency(analyticsDevices, 6, (d) => sfLatest(d, token)),
       sfLatest(MAIN_METER_DEVICE, token),
     ]);
 
