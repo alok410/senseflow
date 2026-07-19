@@ -1,5 +1,13 @@
 # Bug Log
 
+## [v1.0.5] – 2026-07-19 (13:10)
+
+### Fixed
+- Bug: Consumer and user lists did not show after auth was disabled.
+  - Cause: Several pages used embedded backend relationships such as `profiles(user_roles)` / `profiles(consumer_details)` even though those tables are connected through auth users, not direct public-table foreign keys, so the Data API returned relationship errors or empty views.
+  - Fix: Reworked admin user, consumer, secretary, consumer analysis, and secretary consumer reads to load related rows separately and merge them in the UI; secretary pages also fall back to showing consumers while auth is temporarily off.
+  - Files: src/routes/_authenticated/admin/users.tsx, src/routes/_authenticated/admin/consumers.tsx, src/routes/_authenticated/admin/secretaries.tsx, src/routes/_authenticated/admin/consumers.$id.tsx, src/routes/_authenticated/secretary/users.tsx, src/routes/_authenticated/secretary/index.tsx
+
 ## [v1.0.4] – 2026-07-19 (12:40)
 
 ### Fixed

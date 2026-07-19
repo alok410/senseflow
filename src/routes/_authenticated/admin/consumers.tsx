@@ -57,16 +57,42 @@ function AdminConsumers() {
   const list = useQuery({
     queryKey: ["admin-consumers"],
     queryFn: async () => {
-      const { data: roles } = await supabase.from("user_roles").select("user_id").eq("role", "consumer");
+      const { data: roles, error: rolesError } = await supabase.from("user_roles").select("user_id").eq("role", "consumer");
+      if (rolesError) throw rolesError;
       const ids = (roles || []).map((r) => r.user_id);
       if (!ids.length) return [] as Row[];
-      const { data, error } = await supabase
+      const [{ data: profiles, error }, { data: details, error: detailsError }] = await Promise.all([
+        supabase
         .from("profiles")
-        .select("id, full_name, phone, email, is_active, consumer_details(meter_id, serial_number, device_id, block_id, location_id, assigned_secretary_id)")
+        .select("id, full_name, phone, email, is_active, created_at")
         .in("id", ids)
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false }),
+        supabase
+          .from("consumer_details")
+          .select("user_id, meter_id, serial_number, device_id, block_id, location_id, assigned_secretary_id")
+          .in("user_id", ids),
+      ]);
       if (error) throw error;
-      return data as unknown as Row[];
+      if (detailsError) throw detailsError;
+      const detailMap = new Map((details || []).map((d) => [d.user_id, d]));
+      return (profiles || []).map((p) => {
+        const d = detailMap.get(p.id);
+        return {
+          id: p.id,
+          full_name: p.full_name,
+          phone: p.phone,
+          email: p.email,
+          is_active: p.is_active,
+          consumer_details: d ? {
+            meter_id: d.meter_id,
+            serial_number: d.serial_number,
+            device_id: d.device_id,
+            block_id: d.block_id,
+            location_id: d.location_id,
+            assigned_secretary_id: d.assigned_secretary_id,
+          } : null,
+        };
+      }) as Row[];
     },
   });
 

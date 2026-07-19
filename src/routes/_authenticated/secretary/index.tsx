@@ -70,34 +70,48 @@ function SecretaryDashboard() {
 
   // Assigned location + consumers
   const scope = useQuery({
-    queryKey: ["secretary-scope", user?.id],
-    enabled: !!user,
+    queryKey: ["secretary-scope", user?.id ?? "no-auth"],
     queryFn: async () => {
-      const { data: sl } = await supabase
-        .from("secretary_locations").select("location_id").eq("secretary_id", user!.id).maybeSingle();
-      const locationId = sl?.location_id ?? null;
-      let locationName = "";
+      let locationId: string | null = null;
+      let locationName = user ? "" : "All locations";
+      if (user) {
+        const { data: sl, error: slError } = await supabase
+          .from("secretary_locations").select("location_id").eq("secretary_id", user.id).maybeSingle();
+        if (slError) throw slError;
+        locationId = sl?.location_id ?? null;
+      }
       if (locationId) {
         const { data: loc } = await supabase.from("locations").select("name").eq("id", locationId).maybeSingle();
         locationName = loc?.name || "";
       }
       let consumers: Consumer[] = [];
-      if (locationId) {
-        const { data } = await supabase
+      if (locationId || !user) {
+        let query = supabase
           .from("consumer_details")
-          .select("user_id, meter_id, device_id, serial_number, block_id, location_id, profiles!consumer_details_user_id_fkey(full_name, phone, email)")
-          .eq("location_id", locationId);
-        consumers = ((data || []) as any[]).map((c) => ({
+          .select("user_id, meter_id, device_id, serial_number, block_id, location_id");
+        if (locationId) query = query.eq("location_id", locationId);
+        const { data, error } = await query;
+        if (error) throw error;
+        const ids = (data || []).map((c) => c.user_id);
+        const { data: profiles, error: profilesError } = ids.length
+          ? await supabase.from("profiles").select("id, full_name, phone, email").in("id", ids)
+          : { data: [], error: null };
+        if (profilesError) throw profilesError;
+        const profileMap = new Map((profiles || []).map((p) => [p.id, p]));
+        consumers = ((data || []) as any[]).map((c) => {
+          const p = profileMap.get(c.user_id);
+          return ({
           user_id: c.user_id,
           meter_id: c.meter_id,
           device_id: c.device_id,
           serial_number: c.serial_number,
           block_id: c.block_id,
           location_id: c.location_id,
-          full_name: c.profiles?.full_name ?? null,
-          phone: c.profiles?.phone ?? null,
-          email: c.profiles?.email ?? null,
-        }));
+          full_name: p?.full_name ?? null,
+          phone: p?.phone ?? null,
+          email: p?.email ?? null,
+        });
+        });
       }
       return { locationId, locationName, consumers };
     },
