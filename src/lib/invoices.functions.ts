@@ -1,10 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
-async function assertAdmin(ctx: { supabase: any; userId: string }) {
-  const { data } = await ctx.supabase.rpc("has_role", { _user_id: ctx.userId, _role: "admin" });
-  if (!data) throw new Error("Forbidden");
-}
+// Auth is temporarily disabled.
 
 const markPaidInput = z.object({
   invoiceId: z.string().uuid(),
@@ -14,8 +11,7 @@ const markPaidInput = z.object({
 
 export const markInvoicePaid = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => markPaidInput.parse(d))
-  .handler(async ({ data, context }) => {
-    await assertAdmin(context);
+  .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     const { data: inv, error: iErr } = await supabaseAdmin
@@ -40,7 +36,7 @@ export const markInvoicePaid = createServerFn({ method: "POST" })
       amount: inv.total_amount,
       method,
       notes: data.notes ?? null,
-      recorded_by: context.userId,
+      recorded_by: null,
     });
     if (pErr) throw new Error(pErr.message);
 
