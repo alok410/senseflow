@@ -62,7 +62,7 @@ export const fetchAndStoreLatestReading = createServerFn({ method: "POST" })
       previous_reading: previous,
       consumption,
       reading_date: readingDate,
-      source: "api",
+      source: "smart_meter",
       recorded_by: null,
       flow_rate: flowRate,
       rssi,
