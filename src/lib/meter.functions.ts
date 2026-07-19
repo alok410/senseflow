@@ -172,14 +172,21 @@ function canonicalizeConsumers(rows: DashboardConsumer[]): DashboardConsumer[] {
 
 async function fetchWithTimeout(url: string, token: string, timeoutMs = 8000): Promise<Response> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
-    return await fetch(url, {
+    const request = fetch(url, {
       headers: { Authorization: `Bearer ${token}` },
       signal: controller.signal,
     });
+    const deadline = new Promise<Response>((_, reject) => {
+      timeout = setTimeout(() => {
+        controller.abort();
+        reject(new Error("Senseflow request timed out"));
+      }, timeoutMs);
+    });
+    return await Promise.race([request, deadline]);
   } finally {
-    clearTimeout(timeout);
+    if (timeout) clearTimeout(timeout);
   }
 }
 
@@ -198,7 +205,7 @@ async function mapWithConcurrency<T, R>(items: T[], limit: number, worker: (item
 
 async function sfLatest(device: string, token: string): Promise<LatestApi | null> {
   try {
-    const r = await fetchWithTimeout(`${SENSEFLOW_BASE}?device=${encodeURIComponent(device)}`, token, 6000);
+    const r = await fetchWithTimeout(`${SENSEFLOW_BASE}?device=${encodeURIComponent(device)}`, token, 3000);
     if (!r.ok) return null;
     return (await r.json()) as LatestApi;
   } catch { return null; }
@@ -206,7 +213,7 @@ async function sfLatest(device: string, token: string): Promise<LatestApi | null
 async function sfHistory(device: string, startIso: string, endIso: string, token: string): Promise<HistoryDay[]> {
   try {
     const url = `${SENSEFLOW_HISTORY}?device=${encodeURIComponent(device)}&start=${encodeURIComponent(startIso)}&end=${encodeURIComponent(endIso)}`;
-    const r = await fetchWithTimeout(url, token, 8000);
+    const r = await fetchWithTimeout(url, token, 4500);
     if (!r.ok) return [];
     const j = (await r.json()) as HistoryApi | HistoryDay[];
     if (Array.isArray(j)) return j;
