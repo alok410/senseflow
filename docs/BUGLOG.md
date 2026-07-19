@@ -1,5 +1,13 @@
 # Bug Log
 
+## [v1.0.8] – 2026-07-19 (14:20)
+
+### Fixed
+- Bug: Admin dashboard showed 0 for everything because it only aggregated the local `meter_readings` table, which is empty (readings come from the external Senseflow API, not local storage).
+  - Cause: The dashboard queried Supabase-only stats and never called the Senseflow REST API, so Main Meter totals, monthly usage, flow rate, and daily trends were all blank.
+  - Fix: Added `getAdminDashboardStats` server function that calls Senseflow `/latest` and `/history` endpoints for the Main Meter (USFL_FL7053) and every configured sub-meter in parallel, aggregating Today/This Month/Total Usage plus daily consumption trend, flow rate, and top-consumer leaderboard. Rewrote `admin/index.tsx` to render a "Main Meter Overview" card and a "Water Analytics Overview" section that mirror the reference app (26 consumers, 1 secretary, live flow rate, litres totals) instead of reading zeros from Postgres.
+  - Files: src/lib/meter.functions.ts, src/routes/_authenticated/admin/index.tsx
+
 ## [v1.0.7] – 2026-07-19 (13:55)
 
 ### Fixed

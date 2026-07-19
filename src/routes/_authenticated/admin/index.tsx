@@ -1,8 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
-import { subDays, format, startOfDay } from "date-fns";
-import { Users, MapPin, FileText, IndianRupee, AlertCircle, Droplets, BarChart3 } from "lucide-react";
+import { useState } from "react";
+import { subDays, format } from "date-fns";
+import { Users, UserCheck, Droplets, Activity, BarChart3 } from "lucide-react";
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { StatsCard } from "@/components/StatsCard";
@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { supabase } from "@/integrations/supabase/client";
 import { useSession, useMyProfile } from "@/hooks/use-session";
 import { ADMIN_NAV } from "@/lib/nav";
+import { getAdminDashboardStats } from "@/lib/meter.functions";
 
 export const Route = createFileRoute("/_authenticated/admin/")({
   component: AdminDashboard,
@@ -40,93 +41,18 @@ function AdminDashboard() {
     queryFn: async () => (await supabase.from("locations").select("id, name, code").order("name")).data || [],
   });
 
-  const stats = useQuery({
-    queryKey: ["admin-dashboard-stats"],
-    queryFn: async () => {
-      const [consumers, secretaries, locations, invoices, readings] = await Promise.all([
-        supabase.from("user_roles").select("user_id", { count: "exact", head: true }).eq("role", "consumer"),
-        supabase.from("user_roles").select("user_id", { count: "exact", head: true }).eq("role", "secretary"),
-        supabase.from("locations").select("id", { count: "exact", head: true }),
-        supabase.from("invoices").select("total_amount, status"),
-        supabase.from("meter_readings").select("consumption"),
-      ]);
-      const invs = invoices.data || [];
-      const totalRevenue = invs
-        .filter((i) => i.status === "paid")
-        .reduce((s, i) => s + Number(i.total_amount || 0), 0);
-      const pending = invs.filter((i) => i.status === "pending").length;
-      const overdue = invs.filter((i) => i.status === "overdue").length;
-      const totalConsumption = (readings.data || []).reduce(
-        (s, r) => s + Number(r.consumption || 0),
-        0,
-      );
-      return {
-        consumers: consumers.count ?? 0,
-        secretaries: secretaries.count ?? 0,
-        locations: locations.count ?? 0,
-        totalRevenue,
-        pending,
-        overdue,
-        totalConsumption,
-      };
-    },
+  const dash = useQuery({
+    queryKey: ["admin-dashboard-live", start, end, locId],
+    queryFn: () => getAdminDashboardStats({
+      data: { start, end, locationId: locId === ALL ? null : locId },
+    }),
+    staleTime: 30_000,
   });
 
-  const rangeData = useQuery({
-    queryKey: ["admin-dashboard-range", start, end, locId],
-    queryFn: async () => {
-      // consumer_ids scoped by location filter
-      let consumerIds: string[] | null = null;
-      if (locId !== ALL) {
-        const { data: cds } = await supabase
-          .from("consumer_details").select("user_id").eq("location_id", locId);
-        consumerIds = (cds || []).map((c) => c.user_id);
-        if (!consumerIds.length) return { readings: [], byDay: [], leaders: [] };
-      }
-
-      let q = supabase
-        .from("meter_readings")
-        .select("consumer_id, consumption, reading_date")
-        .gte("reading_date", start)
-        .lte("reading_date", `${end}T23:59:59.999Z`);
-      if (consumerIds) q = q.in("consumer_id", consumerIds);
-      const { data: readings, error } = await q;
-      if (error) throw error;
-      const list = readings || [];
-
-      // group by day
-      const byDayMap = new Map<string, number>();
-      list.forEach((r) => {
-        const d = format(startOfDay(new Date(r.reading_date)), "yyyy-MM-dd");
-        byDayMap.set(d, (byDayMap.get(d) || 0) + Number(r.consumption || 0));
-      });
-      const byDay = Array.from(byDayMap.entries())
-        .sort((a, b) => a[0].localeCompare(b[0]))
-        .map(([d, v]) => ({ date: format(new Date(d), "MMM d"), consumption: Number(v.toFixed(2)) }));
-
-      // leaderboard by consumer
-      const byConsumer = new Map<string, number>();
-      list.forEach((r) => {
-        byConsumer.set(r.consumer_id, (byConsumer.get(r.consumer_id) || 0) + Number(r.consumption || 0));
-      });
-      const topIds = Array.from(byConsumer.entries()).sort((a, b) => b[1] - a[1]).slice(0, 20);
-      const ids = topIds.map(([id]) => id);
-      const profiles = ids.length
-        ? (await supabase.from("profiles").select("id, full_name, phone").in("id", ids)).data || []
-        : [];
-      const pMap = new Map(profiles.map((p) => [p.id, p]));
-      const leaders = topIds.map(([cid, total]) => ({
-        id: cid,
-        name: pMap.get(cid)?.full_name || pMap.get(cid)?.phone || cid.slice(0, 8),
-        consumption: Number(total.toFixed(2)),
-      }));
-
-      return { readings: list, byDay, leaders };
-    },
-  });
-
-  const s = stats.data;
-  const leaders = (rangeData.data?.leaders || []).slice(0, topLimit);
+  const s = dash.data;
+  const trend = (s?.trend || []).map((t) => ({ date: format(new Date(t.date), "MMM d"), consumption: t.consumption }));
+  const leaders = (s?.leaders || []).slice(0, topLimit);
+  const fmtL = (n: number) => `${n.toLocaleString("en-IN")} L`;
 
   return (
     <DashboardLayout
@@ -135,23 +61,35 @@ function AdminDashboard() {
       userName={profile?.full_name || null}
       userPhone={profile?.phone || null}
     >
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatsCard label="Consumers" value={s?.consumers ?? "—"} icon={Users} />
-        <StatsCard label="Secretaries" value={s?.secretaries ?? "—"} icon={Users} tone="success" />
-        <StatsCard label="Locations" value={s?.locations ?? "—"} icon={MapPin} />
-        <StatsCard
-          label="Revenue"
-          value={s ? `₹${s.totalRevenue.toLocaleString("en-IN")}` : "—"}
-          icon={IndianRupee}
-          tone="success"
-        />
-        <StatsCard label="Pending invoices" value={s?.pending ?? "—"} icon={FileText} tone="warning" />
-        <StatsCard label="Overdue" value={s?.overdue ?? "—"} icon={AlertCircle} tone="danger" />
-        <StatsCard
-          label="Total consumption"
-          value={s ? `${s.totalConsumption.toLocaleString("en-IN")} L` : "—"}
-          icon={Droplets}
-        />
+      {/* Main Meter Overview */}
+      <Card className="border-primary/20">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Activity className="h-5 w-5 text-primary" /> Main Meter Overview
+          </CardTitle>
+          <p className="text-sm text-muted-foreground">Live values from Senseflow (USFL_FL7053)</p>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="rounded-lg border bg-blue-50/60 dark:bg-blue-950/20 p-4">
+              <p className="text-xs text-muted-foreground">Today's Usage</p>
+              <p className="text-2xl font-bold text-blue-700 dark:text-blue-300">{s ? fmtL(s.mainMeter.todaysUsageL) : "—"}</p>
+            </div>
+            <div className="rounded-lg border bg-emerald-50/60 dark:bg-emerald-950/20 p-4">
+              <p className="text-xs text-muted-foreground">This Month</p>
+              <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-300">{s ? fmtL(s.mainMeter.thisMonthL) : "—"}</p>
+            </div>
+            <div className="rounded-lg border bg-purple-50/60 dark:bg-purple-950/20 p-4">
+              <p className="text-xs text-muted-foreground">Total Usage</p>
+              <p className="text-2xl font-bold text-purple-700 dark:text-purple-300">{s ? fmtL(s.mainMeter.totalUsageL) : "—"}</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="mt-6">
+        <h2 className="text-xl font-bold">Water Analytics Overview</h2>
+        <p className="text-sm text-muted-foreground">Monitor consumption, flow rate and user activity</p>
       </div>
 
       <div className="mt-8 flex flex-wrap items-center gap-2">
@@ -177,12 +115,21 @@ function AdminDashboard() {
       </div>
 
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        <div className="lg:col-span-2 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatsCard label="Consumers" value={s?.consumers ?? "—"} icon={Users} />
+          <StatsCard label="Secretaries" value={s?.secretaries ?? "—"} icon={UserCheck} tone="success" />
+          <StatsCard label="Flow Rate (L/s)" value={s ? s.flowRate.toFixed(2) : "—"} icon={Activity} tone="warning" />
+          <StatsCard label="Total Consumption" value={s ? fmtL(s.totalConsumptionL) : "—"} icon={Droplets} />
+        </div>
         <Card>
-          <CardHeader><CardTitle>Daily consumption</CardTitle></CardHeader>
+          <CardHeader>
+            <CardTitle>Water Consumption Trend</CardTitle>
+            <p className="text-xs text-muted-foreground">Aggregated daily usage (litres) across sub-meters</p>
+          </CardHeader>
           <CardContent className="h-72">
-            {rangeData.data?.byDay.length ? (
+            {trend.length ? (
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={rangeData.data.byDay}>
+                <LineChart data={trend}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="date" fontSize={10} />
                   <YAxis fontSize={10} />
@@ -190,7 +137,7 @@ function AdminDashboard() {
                   <Line type="monotone" dataKey="consumption" stroke="hsl(var(--primary))" />
                 </LineChart>
               </ResponsiveContainer>
-            ) : <p className="text-sm text-muted-foreground">No consumption in range.</p>}
+            ) : <p className="text-sm text-muted-foreground">{dash.isLoading ? "Loading from Senseflow…" : "No consumption in range."}</p>}
           </CardContent>
         </Card>
 
