@@ -321,19 +321,21 @@ export const getAdminDashboardStats = createServerFn({ method: "POST" })
     };
 
     // Keep dashboard values partial and responsive: one slow sub-meter must not zero the main meter.
-    const [mainHistory, analyticsHistories, analyticsLatest, mainLatest] = await Promise.all([
-      withDeadline(sfHistory(MAIN_METER_DEVICE, startIso, endIso, token), [] as HistoryDay[], 5000),
+    const [mainHistory, mainLatest] = await Promise.all([
+      withDeadline(sfHistory(MAIN_METER_DEVICE, startIso, endIso, token), [] as HistoryDay[], 8000),
+      withDeadline(sfLatest(MAIN_METER_DEVICE, token), null as LatestApi | null, 6000),
+    ] as const);
+    const [analyticsHistories, analyticsLatest] = await Promise.all([
       withDeadline(
-        mapWithConcurrency(analyticsDevices, Math.max(1, analyticsDevices.length), (d) => sfHistory(d, startIso, endIso, token)),
+        mapWithConcurrency(analyticsDevices, 4, (d) => sfHistory(d, startIso, endIso, token)),
         analyticsDevices.map(() => [] as HistoryDay[]),
-        5500,
+        16000,
       ),
       withDeadline(
-        mapWithConcurrency(analyticsDevices, Math.max(1, analyticsDevices.length), (d) => sfLatest(d, token)),
+        mapWithConcurrency(analyticsDevices, 4, (d) => sfLatest(d, token)),
         analyticsDevices.map(() => null as LatestApi | null),
-        4000,
+        10000,
       ),
-      withDeadline(sfLatest(MAIN_METER_DEVICE, token), null as LatestApi | null, 4000),
     ] as const);
 
     // Main meter overview (values in kilolitres -> convert to litres)

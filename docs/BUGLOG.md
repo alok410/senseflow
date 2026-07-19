@@ -5,7 +5,7 @@
 ### Fixed
 - Bug: Admin dashboard values dropped back to 0 / “No consumption in range.”
   - Cause: The dashboard was reading the empty local `meter_readings` table for consumption, while the real readings are available from the live Senseflow API.
-  - Fix: Reconnected the Admin dashboard to the live dashboard stats server function and made the backend return partial live data so a slow sub-meter cannot zero out the main meter overview.
+  - Fix: Reconnected the Admin dashboard to the live dashboard stats server function, prioritized the main meter request before sub-meter analytics, and limited sub-meter concurrency so slow devices cannot zero out the main meter overview.
   - Files: src/routes/_authenticated/admin/index.tsx, src/lib/meter.functions.ts
 
 ## [v1.0.10] – 2026-07-19 (15:05)
