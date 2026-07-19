@@ -1,5 +1,13 @@
 # Bug Log
 
+## [v1.0.7] – 2026-07-19 (13:55)
+
+### Fixed
+- Bug: Consumers table showed a combined "Meter / Device" column and the seed was missing the MainMeter (block 00, USFL_FL7053) entry; "No Consumer 2" had no block.
+  - Cause: Legacy UI still surfaced `meter_id` alongside `device_id`, and the demo seed list didn't include MainMeter.
+  - Fix: Removed the Meter ID column and form field from Admin → Consumers (kept Device ID + Serial number as separate columns/inputs). Added MainMeter (USFL_FL7053) to the demo seed and updated "No Consumer 2" block to "Na" to match the reference data. Hit "Seed demo" to insert MainMeter.
+  - Files: src/routes/_authenticated/admin/consumers.tsx, src/lib/consumers.functions.ts, supabase data update
+
 ## [v1.0.6] – 2026-07-19 (13:40)
 
 ### Fixed
