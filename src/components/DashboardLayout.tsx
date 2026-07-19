@@ -1,6 +1,6 @@
 import { type ReactNode, useState } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { Droplets, Menu, X, LogOut, UserCog } from "lucide-react";
+import { Droplets, Menu, X, UserCog, Home } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -14,10 +14,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
-import { useSession, useMyRoles, useActiveRole, type AppRole } from "@/hooks/use-session";
+import { useActiveRole, type AppRole } from "@/hooks/use-session";
 
 export interface NavItem {
   label: string;
@@ -37,9 +35,9 @@ export function DashboardLayout({ children, navItems, title, userName, userPhone
   const qc = useQueryClient();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [mobileOpen, setMobileOpen] = useState(false);
-  const { user } = useSession();
-  const { data: roles } = useMyRoles(user);
-  const { activeRole, setActiveRole } = useActiveRole(roles);
+  // Auth is off — expose all roles in the switcher so anyone can hop between dashboards.
+  const allRoles: AppRole[] = ["admin", "secretary", "consumer"];
+  const { activeRole, setActiveRole } = useActiveRole(allRoles);
 
   const initials = (userName || userPhone || "U")
     .split(" ")
@@ -48,15 +46,13 @@ export function DashboardLayout({ children, navItems, title, userName, userPhone
     .toUpperCase()
     .slice(0, 2);
 
-  const handleLogout = async () => {
+  const goHome = async () => {
     await qc.cancelQueries();
     qc.clear();
     if (typeof window !== "undefined") {
       window.sessionStorage.removeItem("sf_active_role");
     }
-    await supabase.auth.signOut();
-    toast.success("Signed out.");
-    navigate({ to: "/auth", replace: true });
+    navigate({ to: "/", replace: true });
   };
 
   const switchRole = (r: AppRole) => {
@@ -112,7 +108,7 @@ export function DashboardLayout({ children, navItems, title, userName, userPhone
                   )}
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                {roles && roles.length > 1 && activeRole && (
+                {activeRole && (
                   <>
                     <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
                       <UserCog className="mr-2 inline h-3.5 w-3.5" />
@@ -122,7 +118,7 @@ export function DashboardLayout({ children, navItems, title, userName, userPhone
                       value={activeRole}
                       onValueChange={(v) => switchRole(v as AppRole)}
                     >
-                      {roles.map((r) => (
+                      {allRoles.map((r) => (
                         <DropdownMenuRadioItem key={r} value={r} className="capitalize">
                           {r}
                         </DropdownMenuRadioItem>
@@ -131,9 +127,9 @@ export function DashboardLayout({ children, navItems, title, userName, userPhone
                     <DropdownMenuSeparator />
                   </>
                 )}
-                <DropdownMenuItem onClick={handleLogout}>
-                  <LogOut className="mr-2 h-4 w-4" />
-                  Sign out
+                <DropdownMenuItem onClick={goHome}>
+                  <Home className="mr-2 h-4 w-4" />
+                  Back to home
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
