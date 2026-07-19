@@ -1,5 +1,4 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { subDays, format } from "date-fns";
@@ -14,13 +13,20 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { supabase } from "@/integrations/supabase/client";
 import { useSession, useMyProfile } from "@/hooks/use-session";
 import { ADMIN_NAV } from "@/lib/nav";
-import { getAdminDashboardStats } from "@/lib/meter.functions";
 
 export const Route = createFileRoute("/_authenticated/admin/")({
   component: AdminDashboard,
 });
 
 const ALL = "__all__";
+
+type DashboardConsumerRow = {
+  id: string;
+  name: string;
+  locationId: string | null;
+  block: string;
+  device: string;
+};
 
 function AdminDashboard() {
   const { user } = useSession();
@@ -31,7 +37,6 @@ function AdminDashboard() {
   const [locId, setLocId] = useState<string>(ALL);
   const [userId, setUserId] = useState<string>(ALL);
   const [topLimit, setTopLimit] = useState<number>(10);
-  const fetchDashboardStats = useServerFn(getAdminDashboardStats);
 
   const setRange = (d: 7 | 15 | 30) => {
     setPreset(d);
@@ -50,7 +55,7 @@ function AdminDashboard() {
       const { data: roles, error: roleError } = await supabase.from("user_roles").select("user_id").eq("role", "consumer");
       if (roleError) throw roleError;
       const ids = (roles || []).map((r) => r.user_id);
-      if (!ids.length) return [] as Array<{ id: string; name: string; locationId: string | null }>;
+      if (!ids.length) return [] as DashboardConsumerRow[];
       const [{ data: profiles, error: profileError }, { data: details, error: detailsError }] = await Promise.all([
         supabase.from("profiles").select("id, full_name, phone, is_active").in("id", ids),
         supabase.from("consumer_details").select("user_id, device_id, block_id, location_id").in("user_id", ids).not("device_id", "is", null),
@@ -58,7 +63,7 @@ function AdminDashboard() {
       if (profileError) throw profileError;
       if (detailsError) throw detailsError;
       const pMap = new Map((profiles || []).map((p) => [p.id, p]));
-      const byKey = new Map<string, { id: string; name: string; locationId: string | null; block: string; device: string }>();
+      const byKey = new Map<string, DashboardConsumerRow>();
       (details || []).forEach((d) => {
         const p = pMap.get(d.user_id);
         if (!p || p.is_active === false || !d.device_id || d.device_id === "USFL_FL7053" || d.block_id === "00") return;
@@ -74,30 +79,87 @@ function AdminDashboard() {
         }
       });
       return Array.from(byKey.values())
-        .sort((a, b) => a.block.localeCompare(b.block, undefined, { numeric: true }) || a.name.localeCompare(b.name))
-        .map(({ id, name, locationId }) => ({ id, name, locationId }));
+        .sort((a, b) => a.block.localeCompare(b.block, undefined, { numeric: true }) || a.name.localeCompare(b.name));
     },
+  });
+
+  const secretaries = useQuery({
+    queryKey: ["admin-dashboard-secretaries", locId],
+    queryFn: async () => {
+      const { data: roles, error } = await supabase.from("user_roles").select("user_id").eq("role", "secretary");
+      if (error) throw error;
+      const ids = Array.from(new Set((roles || []).map((r) => r.user_id)));
+      if (locId === ALL || !ids.length) return ids.length;
+      const { data: assigned, error: assignedError } = await supabase
+        .from("secretary_locations")
+        .select("secretary_id")
+        .eq("location_id", locId);
+      if (assignedError) throw assignedError;
+      return new Set((assigned || []).map((s) => s.secretary_id)).size;
+    },
+  });
+
+  const localReadings = useQuery({
+    queryKey: ["admin-dashboard-local-readings", start, end, locId, userId, topLimit, consumers.data?.map((c) => c.id).join(",")],
+    queryFn: async () => {
+      const filtered = (consumers.data || []).filter((c) =>
+        (locId === ALL || c.locationId === locId) && (userId === ALL || c.id === userId),
+      );
+      const ids = filtered.map((c) => c.id);
+      if (!ids.length) return { trend: [], leaders: [], totalConsumptionL: 0, flowRate: 0 };
+      const { data, error } = await supabase
+        .from("meter_readings")
+        .select("consumer_id, consumption, reading_date, flow_rate")
+        .in("consumer_id", ids)
+        .gte("reading_date", `${start}T00:00:00`)
+        .lte("reading_date", `${end}T23:59:59`)
+        .order("reading_date", { ascending: true });
+      if (error) throw error;
+      const byId = new Map(filtered.map((c) => [c.id, c]));
+      const byDay = new Map<string, number>();
+      const byUser = new Map<string, number>();
+      let flowRate = 0;
+      for (const row of data || []) {
+        const day = String(row.reading_date).slice(0, 10);
+        const litres = Number(row.consumption || 0) * 1000;
+        byDay.set(day, (byDay.get(day) || 0) + litres);
+        byUser.set(row.consumer_id, (byUser.get(row.consumer_id) || 0) + litres);
+        if (row.flow_rate != null) flowRate = Number(row.flow_rate) || flowRate;
+      }
+      const trend = Array.from(byDay.entries()).map(([date, consumption]) => ({ date, consumption: Math.round(consumption) }));
+      const leaders = Array.from(byUser.entries())
+        .map(([id, consumption]) => {
+          const c = byId.get(id);
+          return { id, name: c ? `${c.block} · ${c.name.replace(/^\d+ · /, "")}` : id, device_id: c?.device || "", consumption: Math.round(consumption) };
+        })
+        .sort((a, b) => b.consumption - a.consumption)
+        .slice(0, topLimit);
+      return {
+        trend,
+        leaders,
+        totalConsumptionL: Math.round(Array.from(byDay.values()).reduce((sum, v) => sum + v, 0)),
+        flowRate,
+      };
+    },
+    enabled: !!consumers.data,
   });
 
   const usersForDropdown = useMemo(() => {
     return (consumers.data || []).filter((c) => locId === ALL || c.locationId === locId);
   }, [consumers.data, locId]);
 
-  const dash = useQuery({
-    queryKey: ["admin-dashboard-live", start, end, locId, userId, topLimit],
-    queryFn: () => fetchDashboardStats({
-      data: {
-        start,
-        end,
-        locationId: locId === ALL ? null : locId,
-        userId: userId === ALL ? null : userId,
-        topLimit,
-      },
-    }),
-    staleTime: 30_000,
-  });
-
-  const s = dash.data;
+  const filteredConsumers = (consumers.data || []).filter((c) =>
+    (locId === ALL || c.locationId === locId) && (userId === ALL || c.id === userId),
+  );
+  const s = {
+    consumers: filteredConsumers.length,
+    secretaries: secretaries.data ?? 0,
+    mainMeter: { todaysUsageL: 0, thisMonthL: 0, totalUsageL: 0 },
+    flowRate: localReadings.data?.flowRate ?? 0,
+    totalConsumptionL: localReadings.data?.totalConsumptionL ?? 0,
+    trend: localReadings.data?.trend ?? [],
+    leaders: localReadings.data?.leaders ?? [],
+  };
   const trend = (s?.trend || []).map((t) => ({ date: format(new Date(t.date), "MMM d"), consumption: t.consumption }));
   const leaders = s?.leaders || [];
   const fmtL = (n: number) => `${n.toLocaleString("en-IN")} L`;
