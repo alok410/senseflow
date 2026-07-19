@@ -1,5 +1,13 @@
 # Bug Log
 
+## [v1.0.4] – 2026-07-19 (12:40)
+
+### Fixed
+- Bug: Created location (and other rows) not appearing in admin tables — API returned empty arrays.
+  - Cause: After auth was disabled in v1.0.2, the frontend queries Supabase as the `anon` role, but RLS policies on app tables only allowed `authenticated`. Server-side writes via `supabaseAdmin` succeed, but client-side reads returned `[]`.
+  - Fix: Added `SELECT` grants and permissive `anon` read policies on locations, profiles, user_roles, consumer_details, meter_readings, invoices, payments, water_rates, prepaid_balances, secretary_locations so lists render while auth is off.
+  - Files: supabase migration
+
 ## [v1.0.3] – 2026-07-19 (12:20)
 
 ### Fixed
