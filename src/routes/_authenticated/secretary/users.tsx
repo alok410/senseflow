@@ -27,19 +27,37 @@ function SecretaryUsers() {
   const qc = useQueryClient();
 
   const list = useQuery({
-    queryKey: ["secretary-users", user?.id],
-    enabled: !!user,
+    queryKey: ["secretary-users", user?.id ?? "no-auth"],
     queryFn: async () => {
-      const { data: myLocs } = await supabase
-        .from("secretary_locations").select("location_id").eq("secretary_id", user!.id);
-      const locIds = (myLocs || []).map((l) => l.location_id);
-      if (!locIds.length) return [] as Row[];
-      const { data, error } = await supabase
+      let locIds: string[] | null = null;
+      if (user) {
+        const { data: myLocs, error: locsError } = await supabase
+          .from("secretary_locations").select("location_id").eq("secretary_id", user.id);
+        if (locsError) throw locsError;
+        locIds = (myLocs || []).map((l) => l.location_id);
+        if (!locIds.length) return [] as Row[];
+      }
+      let query = supabase
         .from("consumer_details")
-        .select("user_id, meter_id, device_id, connection_date, account_type, location_id, profiles!consumer_details_user_id_fkey(full_name, phone), locations(name, code)")
-        .in("location_id", locIds);
+        .select("user_id, meter_id, device_id, connection_date, account_type, location_id");
+      if (locIds) query = query.in("location_id", locIds);
+      const { data, error } = await query;
       if (error) throw error;
-      return (data as unknown as Row[]);
+      const consumerIds = (data || []).map((c) => c.user_id);
+      const locationIds = Array.from(new Set((data || []).map((c) => c.location_id).filter(Boolean))) as string[];
+      const [{ data: profiles, error: profilesError }, { data: locations, error: locationsError }] = await Promise.all([
+        consumerIds.length ? supabase.from("profiles").select("id, full_name, phone").in("id", consumerIds) : Promise.resolve({ data: [], error: null }),
+        locationIds.length ? supabase.from("locations").select("id, name, code").in("id", locationIds) : Promise.resolve({ data: [], error: null }),
+      ]);
+      if (profilesError) throw profilesError;
+      if (locationsError) throw locationsError;
+      const profileMap = new Map((profiles || []).map((p) => [p.id, p]));
+      const locationMap = new Map((locations || []).map((l) => [l.id, l]));
+      return (data || []).map((c) => ({
+        ...c,
+        profiles: profileMap.get(c.user_id) || null,
+        locations: c.location_id ? locationMap.get(c.location_id) || null : null,
+      })) as Row[];
     },
   });
 

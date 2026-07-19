@@ -58,12 +58,26 @@ function AdminUsers() {
   const list = useQuery({
     queryKey: ["admin-users"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data: profiles, error } = await supabase
         .from("profiles")
-        .select("id, full_name, phone, email, is_active, created_at, user_roles(role)")
+        .select("id, full_name, phone, email, is_active, created_at")
         .order("created_at", { ascending: false });
       if (error) throw error;
-      return data as unknown as UserRow[];
+      const ids = (profiles || []).map((p) => p.id);
+      const { data: roles, error: rolesError } = ids.length
+        ? await supabase.from("user_roles").select("user_id, role").in("user_id", ids)
+        : { data: [], error: null };
+      if (rolesError) throw rolesError;
+      const roleMap = new Map<string, { role: AppRole }[]>();
+      (roles || []).forEach((r) => {
+        const list = roleMap.get(r.user_id) || [];
+        list.push({ role: r.role as AppRole });
+        roleMap.set(r.user_id, list);
+      });
+      return (profiles || []).map((p) => ({
+        ...p,
+        user_roles: roleMap.get(p.id) || [],
+      })) as UserRow[];
     },
   });
 

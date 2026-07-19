@@ -56,16 +56,37 @@ function AdminSecretaries() {
   const list = useQuery({
     queryKey: ["admin-secretaries"],
     queryFn: async () => {
-      const { data: roles } = await supabase.from("user_roles").select("user_id").eq("role", "secretary");
+      const { data: roles, error: rolesError } = await supabase.from("user_roles").select("user_id").eq("role", "secretary");
+      if (rolesError) throw rolesError;
       const ids = (roles || []).map((r) => r.user_id);
       if (!ids.length) return [] as Row[];
-      const { data, error } = await supabase
+      const [{ data: profiles, error }, { data: secretaryLocations, error: locationError }] = await Promise.all([
+        supabase
         .from("profiles")
-        .select("id, full_name, phone, email, is_active, secretary_locations!secretary_locations_secretary_id_fkey(location_id)")
+        .select("id, full_name, phone, email, is_active, created_at")
         .in("id", ids)
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false }),
+        supabase
+          .from("secretary_locations")
+          .select("secretary_id, location_id")
+          .in("secretary_id", ids),
+      ]);
       if (error) throw error;
-      return data as unknown as Row[];
+      if (locationError) throw locationError;
+      const locMap = new Map<string, { location_id: string }[]>();
+      (secretaryLocations || []).forEach((sl) => {
+        const list = locMap.get(sl.secretary_id) || [];
+        list.push({ location_id: sl.location_id });
+        locMap.set(sl.secretary_id, list);
+      });
+      return (profiles || []).map((p) => ({
+        id: p.id,
+        full_name: p.full_name,
+        phone: p.phone,
+        email: p.email,
+        is_active: p.is_active,
+        secretary_locations: locMap.get(p.id) || [],
+      })) as Row[];
     },
   });
 

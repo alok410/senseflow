@@ -37,13 +37,33 @@ function ConsumerAnalysis() {
   const consumer = useQuery({
     queryKey: ["admin-consumer", id],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data: profileData, error } = await supabase
         .from("profiles")
-        .select("id, full_name, phone, email, is_active, consumer_details(meter_id, serial_number, device_id, block_id, location_id, locations(name, code))")
+        .select("id, full_name, phone, email, is_active")
         .eq("id", id)
         .maybeSingle();
       if (error) throw error;
-      return data as any;
+      if (!profileData) return null;
+      const { data: details, error: detailsError } = await supabase
+        .from("consumer_details")
+        .select("meter_id, serial_number, device_id, block_id, location_id")
+        .eq("user_id", id)
+        .maybeSingle();
+      if (detailsError) throw detailsError;
+      let location: { name: string; code: string } | null = null;
+      if (details?.location_id) {
+        const { data: loc, error: locError } = await supabase
+          .from("locations")
+          .select("name, code")
+          .eq("id", details.location_id)
+          .maybeSingle();
+        if (locError) throw locError;
+        location = loc;
+      }
+      return {
+        ...profileData,
+        consumer_details: details ? { ...details, locations: location } : null,
+      } as any;
     },
   });
 
