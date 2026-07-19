@@ -1,6 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
 const roleSchema = z.enum(["admin", "secretary", "consumer"]);
 const phoneSchema = z.string().trim().regex(/^\+\d{8,15}$/, "Invalid phone (use +<country><number>)");
@@ -12,21 +11,11 @@ const createUserInput = z.object({
   roles: z.array(roleSchema).min(1, "Pick at least one role"),
 });
 
-async function assertAdmin(context: { supabase: any; userId: string }) {
-  const { data: isAdmin, error } = await context.supabase.rpc("has_role", {
-    _user_id: context.userId,
-    _role: "admin",
-  });
-  if (error) throw new Error(error.message);
-  if (!isAdmin) throw new Error("Forbidden");
-}
+// Auth is temporarily disabled.
 
 export const createUser = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => createUserInput.parse(data))
-  .handler(async ({ data, context }) => {
-    await assertAdmin(context);
-
+  .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     const { data: dup } = await supabaseAdmin
@@ -71,16 +60,8 @@ const setRolesInput = z.object({
 });
 
 export const setUserRoles = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
   .inputValidator((data: unknown) => setRolesInput.parse(data))
-  .handler(async ({ data, context }) => {
-    await assertAdmin(context);
-
-    // Prevent self-lockout: if caller is editing themselves, keep admin.
-    if (data.userId === context.userId && !data.roles.includes("admin")) {
-      throw new Error("You cannot remove your own admin role.");
-    }
-
+  .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     await supabaseAdmin.from("user_roles").delete().eq("user_id", data.userId);

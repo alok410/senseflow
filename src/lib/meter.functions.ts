@@ -1,6 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
 const SENSEFLOW_BASE = "https://apps.samasth.io:8090/api/Senseflow/Flowmeter/latest";
 
@@ -12,23 +11,9 @@ function toIST(iso: string | null | undefined): string | null {
 }
 
 export const fetchAndStoreLatestReading = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ consumerId: z.string().uuid() }).parse(d))
-  .handler(async ({ data, context }) => {
-    // Authorization: admin, the consumer themselves, or secretary who manages them.
-    const [{ data: isAdmin }, { data: isSec }] = await Promise.all([
-      context.supabase.rpc("has_role", { _user_id: context.userId, _role: "admin" }),
-      context.supabase.rpc("has_role", { _user_id: context.userId, _role: "secretary" }),
-    ]);
-    let allowed = !!isAdmin || context.userId === data.consumerId;
-    if (!allowed && isSec) {
-      const { data: mgr } = await context.supabase.rpc("secretary_manages_consumer", {
-        _secretary_id: context.userId, _consumer_id: data.consumerId,
-      });
-      allowed = !!mgr;
-    }
-    if (!allowed) throw new Error("Forbidden");
-
+  .handler(async ({ data }) => {
+    // Auth is temporarily disabled — anyone can trigger a reading fetch.
     const token = process.env.SENSEFLOW_API_TOKEN;
     if (!token) throw new Error("SENSEFLOW_API_TOKEN not configured");
 
@@ -77,7 +62,7 @@ export const fetchAndStoreLatestReading = createServerFn({ method: "POST" })
       consumption,
       reading_date: readingDate,
       source: "api",
-      recorded_by: context.userId,
+      recorded_by: null,
       flow_rate: flowRate,
       rssi,
       last_active: lastActive,

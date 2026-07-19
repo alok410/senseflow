@@ -1,6 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
 const input = z.object({
   consumerId: z.string().uuid(),
@@ -9,23 +8,9 @@ const input = z.object({
 });
 
 export const addCashBalance = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => input.parse(d))
-  .handler(async ({ data, context }) => {
-    // Allow admins OR secretaries who manage this consumer.
-    const [{ data: isAdmin }, { data: isSec }] = await Promise.all([
-      context.supabase.rpc("has_role", { _user_id: context.userId, _role: "admin" }),
-      context.supabase.rpc("has_role", { _user_id: context.userId, _role: "secretary" }),
-    ]);
-    let allowed = !!isAdmin;
-    if (!allowed && isSec) {
-      const { data: mgr } = await context.supabase.rpc("secretary_manages_consumer", {
-        _secretary_id: context.userId, _consumer_id: data.consumerId,
-      });
-      allowed = !!mgr;
-    }
-    if (!allowed) throw new Error("Forbidden");
-
+  .handler(async ({ data }) => {
+    // Auth is temporarily disabled.
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const now = new Date().toISOString();
 
@@ -47,7 +32,7 @@ export const addCashBalance = createServerFn({ method: "POST" })
       amount: data.amount,
       method: "manual",
       notes: data.notes ?? `Cash payment recorded`,
-      recorded_by: context.userId,
+      recorded_by: null,
     });
     if (pErr) throw new Error(pErr.message);
 

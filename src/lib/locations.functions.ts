@@ -1,15 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
-async function assertAdmin(ctx: { supabase: any; userId: string }) {
-  const { data, error } = await ctx.supabase.rpc("has_role", {
-    _user_id: ctx.userId,
-    _role: "admin",
-  });
-  if (error) throw new Error(error.message);
-  if (!data) throw new Error("Forbidden");
-}
+// Auth is temporarily disabled — server functions run without a signed-in user.
 
 const createInput = z.object({
   code: z.string().trim().min(1).max(40),
@@ -18,10 +10,8 @@ const createInput = z.object({
 });
 
 export const createLocation = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => createInput.parse(d))
-  .handler(async ({ data, context }) => {
-    await assertAdmin(context);
+  .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: dup } = await supabaseAdmin
       .from("locations").select("id").eq("code", data.code).maybeSingle();
@@ -42,10 +32,8 @@ const updateInput = z.object({
 });
 
 export const updateLocation = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => updateInput.parse(d))
-  .handler(async ({ data, context }) => {
-    await assertAdmin(context);
+  .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { id, ...rest } = data;
     const { error } = await supabaseAdmin.from("locations").update(rest).eq("id", id);
@@ -54,10 +42,8 @@ export const updateLocation = createServerFn({ method: "POST" })
   });
 
 export const deleteLocation = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ id: z.string().uuid() }).parse(d))
-  .handler(async ({ data, context }) => {
-    await assertAdmin(context);
+  .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { error } = await supabaseAdmin.from("locations").delete().eq("id", data.id);
     if (error) throw new Error(error.message);

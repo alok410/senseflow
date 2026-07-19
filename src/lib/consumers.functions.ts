@@ -1,13 +1,9 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
 const phoneSchema = z.string().trim().regex(/^\+\d{8,15}$/, "Invalid phone (use +<country><number>)");
 
-async function assertAdmin(ctx: { supabase: any; userId: string }) {
-  const { data } = await ctx.supabase.rpc("has_role", { _user_id: ctx.userId, _role: "admin" });
-  if (!data) throw new Error("Forbidden");
-}
+// Auth is temporarily disabled.
 
 const createInput = z.object({
   fullName: z.string().trim().min(1).max(120),
@@ -22,10 +18,8 @@ const createInput = z.object({
 });
 
 export const createConsumer = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => createInput.parse(d))
-  .handler(async ({ data, context }) => {
-    await assertAdmin(context);
+  .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     const { data: dup } = await supabaseAdmin
@@ -82,10 +76,8 @@ const updateInput = z.object({
 });
 
 export const updateConsumer = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => updateInput.parse(d))
-  .handler(async ({ data, context }) => {
-    await assertAdmin(context);
+  .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     const p: Record<string, unknown> = {};
@@ -114,10 +106,8 @@ export const updateConsumer = createServerFn({ method: "POST" })
   });
 
 export const deactivateConsumer = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ userId: z.string().uuid() }).parse(d))
-  .handler(async ({ data, context }) => {
-    await assertAdmin(context);
+  .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { error } = await supabaseAdmin.from("profiles")
       .update({ is_active: false }).eq("id", data.userId);
@@ -126,11 +116,8 @@ export const deactivateConsumer = createServerFn({ method: "POST" })
   });
 
 export const deleteConsumer = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ userId: z.string().uuid() }).parse(d))
-  .handler(async ({ data, context }) => {
-    await assertAdmin(context);
-    if (data.userId === context.userId) throw new Error("You cannot delete your own account.");
+  .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { error } = await supabaseAdmin.auth.admin.deleteUser(data.userId);
     if (error) throw new Error(error.message);
@@ -169,12 +156,10 @@ const DEMO_CONSUMERS: Array<{
 ];
 
 export const seedDemoConsumers = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) =>
     z.object({ locationId: z.string().uuid().optional().nullable() }).parse(d ?? {}),
   )
-  .handler(async ({ data, context }) => {
-    await assertAdmin(context);
+  .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     let locationId = data.locationId ?? null;
