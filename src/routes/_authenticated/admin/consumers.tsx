@@ -34,7 +34,7 @@ type Row = {
 
 const NONE = "__none__";
 const ALL = "__all__";
-type SortKey = "name" | "phone" | "block" | "meter";
+type SortKey = "name" | "phone" | "block" | "device";
 
 function AdminConsumers() {
   const { user } = useSession();
@@ -42,7 +42,7 @@ function AdminConsumers() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Row | null>(null);
-  const initial = { fullName: "", phone: "", email: "", locationId: NONE, meterId: "", serialNumber: "", deviceId: "", blockId: "" };
+  const initial = { fullName: "", phone: "", email: "", locationId: NONE, serialNumber: "", deviceId: "", blockId: "" };
   const [form, setForm] = useState(initial);
   const [search, setSearch] = useState("");
   const [filterLoc, setFilterLoc] = useState<string>(ALL);
@@ -110,8 +110,8 @@ function AdminConsumers() {
       return (c.full_name || "").toLowerCase().includes(q)
         || (c.phone || "").toLowerCase().includes(q)
         || (c.email || "").toLowerCase().includes(q)
-        || (c.consumer_details?.meter_id || "").toLowerCase().includes(q)
         || (c.consumer_details?.device_id || "").toLowerCase().includes(q)
+        || (c.consumer_details?.serial_number || "").toLowerCase().includes(q)
         || (c.consumer_details?.block_id || "").toLowerCase().includes(q);
     });
     const dir = sortDir === "asc" ? 1 : -1;
@@ -119,7 +119,7 @@ function AdminConsumers() {
       switch (sortKey) {
         case "name": return (c.full_name || "").toLowerCase();
         case "phone": return c.phone || "";
-        case "meter": return c.consumer_details?.meter_id || c.consumer_details?.device_id || "";
+        case "device": return c.consumer_details?.device_id || "";
         case "block": return c.consumer_details?.block_id || "";
       }
     };
@@ -137,7 +137,6 @@ function AdminConsumers() {
       fullName: form.fullName, phone: form.phone,
       email: form.email || undefined,
       locationId: form.locationId === NONE ? null : form.locationId,
-      meterId: form.meterId || undefined,
       serialNumber: form.serialNumber || undefined,
       deviceId: form.deviceId || undefined,
       blockId: form.blockId || undefined,
@@ -161,7 +160,6 @@ function AdminConsumers() {
         email: editing.email ?? undefined,
         is_active: editing.is_active,
         locationId: cd.location_id,
-        meterId: cd.meter_id,
         serialNumber: cd.serial_number,
         deviceId: cd.device_id,
         blockId: cd.block_id,
@@ -194,7 +192,7 @@ function AdminConsumers() {
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <div className="relative flex-1 min-w-[220px]">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input className="pl-9" placeholder="Search name, phone, block, meter…" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <Input className="pl-9" placeholder="Search name, phone, block, device, serial…" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
         <Select value={filterLoc} onValueChange={setFilterLoc}>
           <SelectTrigger className="w-56"><SelectValue placeholder="All locations" /></SelectTrigger>
@@ -227,9 +225,8 @@ function AdminConsumers() {
                   </Select>
                 </div>
                 <div className="space-y-2"><Label>Block ID</Label><Input value={form.blockId} placeholder="A1" onChange={(e) => setForm({ ...form, blockId: e.target.value })} /></div>
-                <div className="space-y-2"><Label>Meter ID</Label><Input value={form.meterId} onChange={(e) => setForm({ ...form, meterId: e.target.value })} /></div>
+                <div className="space-y-2"><Label>Device ID (Senseflow)</Label><Input value={form.deviceId} placeholder="USFL_WM0003" onChange={(e) => setForm({ ...form, deviceId: e.target.value })} /></div>
                 <div className="space-y-2"><Label>Serial number</Label><Input value={form.serialNumber} onChange={(e) => setForm({ ...form, serialNumber: e.target.value })} /></div>
-                <div className="space-y-2"><Label>Device ID (Senseflow)</Label><Input value={form.deviceId} placeholder="USFL_FL7053" onChange={(e) => setForm({ ...form, deviceId: e.target.value })} /></div>
               </div>
               <DialogFooter><Button type="submit" disabled={createMut.isPending}>{createMut.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Create</Button></DialogFooter>
             </form>
@@ -246,7 +243,8 @@ function AdminConsumers() {
                   <th className="px-4 py-3"><button className="flex items-center gap-1 hover:text-foreground" onClick={() => toggleSort("block")}>Block <ArrowUpDown className="h-3 w-3" /></button></th>
                   <th className="px-4 py-3"><button className="flex items-center gap-1 hover:text-foreground" onClick={() => toggleSort("name")}>Name <ArrowUpDown className="h-3 w-3" /></button></th>
                   <th className="px-4 py-3"><button className="flex items-center gap-1 hover:text-foreground" onClick={() => toggleSort("phone")}>Phone <ArrowUpDown className="h-3 w-3" /></button></th>
-                  <th className="px-4 py-3"><button className="flex items-center gap-1 hover:text-foreground" onClick={() => toggleSort("meter")}>Meter / Device <ArrowUpDown className="h-3 w-3" /></button></th>
+                  <th className="px-4 py-3"><button className="flex items-center gap-1 hover:text-foreground" onClick={() => toggleSort("device")}>Device ID <ArrowUpDown className="h-3 w-3" /></button></th>
+                  <th className="px-4 py-3">Serial number</th>
                   <th className="px-4 py-3">Location</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3 text-right">Actions</th>
@@ -258,21 +256,19 @@ function AdminConsumers() {
                     <td className="px-4 py-3 font-mono text-xs">{c.consumer_details?.block_id || "—"}</td>
                     <td className="px-4 py-3 font-medium">{c.full_name || "—"}</td>
                     <td className="px-4 py-3 text-muted-foreground">{c.phone || "—"}</td>
-                    <td className="px-4 py-3">
-                      <div>{c.consumer_details?.meter_id || "—"}</div>
-                      <div className="font-mono text-xs text-muted-foreground">{c.consumer_details?.device_id || ""}</div>
-                    </td>
+                    <td className="px-4 py-3 font-mono text-xs">{c.consumer_details?.device_id || "—"}</td>
+                    <td className="px-4 py-3 font-mono text-xs">{c.consumer_details?.serial_number || "—"}</td>
                     <td className="px-4 py-3 text-xs">{c.consumer_details?.location_id ? locName.get(c.consumer_details.location_id) : "—"}</td>
                     <td className="px-4 py-3">{c.is_active ? <Badge>Active</Badge> : <Badge variant="secondary">Inactive</Badge>}</td>
                     <td className="px-4 py-3 text-right">
                       <Link to="/admin/consumers/$id" params={{ id: c.id }}><Button size="sm" variant="ghost" title="Analysis"><BarChart3 className="h-3.5 w-3.5" /></Button></Link>
-                      <Button size="sm" variant="ghost" disabled={fetchMut.isPending || !(c.consumer_details?.meter_id || c.consumer_details?.device_id)} onClick={() => fetchMut.mutate(c.id)} title="Fetch latest reading"><RefreshCw className="h-3.5 w-3.5" /></Button>
+                      <Button size="sm" variant="ghost" disabled={fetchMut.isPending || !c.consumer_details?.device_id} onClick={() => fetchMut.mutate(c.id)} title="Fetch latest reading"><RefreshCw className="h-3.5 w-3.5" /></Button>
                       <Button size="sm" variant="ghost" onClick={() => setEditing(c)}><Pencil className="h-3.5 w-3.5" /></Button>
                       <Button size="sm" variant="ghost" onClick={() => { if (confirm(`Delete ${c.full_name || c.phone}? This removes the user, meter, readings and invoices.`)) deleteMut.mutate(c.id); }}><Trash2 className="h-3.5 w-3.5" /></Button>
                     </td>
                   </tr>
                 ))}
-                {!filtered.length && <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">No consumers found.</td></tr>}
+                {!filtered.length && <tr><td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">No consumers found.</td></tr>}
               </tbody>
             </table>
           </div>
@@ -299,9 +295,8 @@ function AdminConsumers() {
                   </Select>
                 </div>
                 <div className="space-y-2"><Label>Block ID</Label><Input value={editing.consumer_details?.block_id || ""} onChange={(e) => setEditing({ ...editing, consumer_details: { ...(editing.consumer_details || { meter_id: null, serial_number: null, device_id: null, block_id: null, location_id: null, assigned_secretary_id: null }), block_id: e.target.value || null } })} /></div>
-                <div className="space-y-2"><Label>Meter ID</Label><Input value={editing.consumer_details?.meter_id || ""} onChange={(e) => setEditing({ ...editing, consumer_details: { ...(editing.consumer_details || { meter_id: null, serial_number: null, device_id: null, block_id: null, location_id: null, assigned_secretary_id: null }), meter_id: e.target.value || null } })} /></div>
+                <div className="space-y-2"><Label>Device ID (Senseflow)</Label><Input value={editing.consumer_details?.device_id || ""} onChange={(e) => setEditing({ ...editing, consumer_details: { ...(editing.consumer_details || { meter_id: null, serial_number: null, device_id: null, block_id: null, location_id: null, assigned_secretary_id: null }), device_id: e.target.value || null } })} /></div>
                 <div className="space-y-2"><Label>Serial number</Label><Input value={editing.consumer_details?.serial_number || ""} onChange={(e) => setEditing({ ...editing, consumer_details: { ...(editing.consumer_details || { meter_id: null, serial_number: null, device_id: null, block_id: null, location_id: null, assigned_secretary_id: null }), serial_number: e.target.value || null } })} /></div>
-                <div className="space-y-2 col-span-2"><Label>Device ID</Label><Input value={editing.consumer_details?.device_id || ""} onChange={(e) => setEditing({ ...editing, consumer_details: { ...(editing.consumer_details || { meter_id: null, serial_number: null, device_id: null, block_id: null, location_id: null, assigned_secretary_id: null }), device_id: e.target.value || null } })} /></div>
               </div>
               <DialogFooter><Button type="submit" disabled={updateMut.isPending}>{updateMut.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save</Button></DialogFooter>
             </form>
