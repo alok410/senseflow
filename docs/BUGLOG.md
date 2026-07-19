@@ -1,5 +1,13 @@
 # Bug Log
 
+## [v1.0.9] – 2026-07-19 (14:45)
+
+### Fixed
+- Bug: Admin dashboard filters and overview stayed stuck on placeholders/loading instead of showing consumer and secretary counts.
+  - Cause: The dashboard depended on the live Senseflow server function for the whole render path, so when the external API was slow or unavailable the page never reached its fallback state.
+  - Fix: Moved the blocking dashboard counts, filters, and local reading aggregation back to direct client database reads, while keeping the UI responsive even when live Senseflow data is unavailable.
+  - Files: src/routes/_authenticated/admin/index.tsx
+
 ## [v1.0.8] – 2026-07-19 (14:20)
 
 ### Fixed
