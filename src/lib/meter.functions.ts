@@ -340,9 +340,9 @@ export const getAdminDashboardStats = createServerFn({ method: "POST" })
           )
         : Promise.resolve([] as HistoryDay[]),
       withDeadline(
-        mapWithConcurrency(analyticsDevices, 5, (d) => sfHistory(d, startIso, endIso, token)),
+        mapWithConcurrency(analyticsDevices, 1, (d) => sfHistory(d, startIso, endIso, token)),
         analyticsDevices.map(() => [] as HistoryDay[]),
-        90000,
+        120000,
       ),
     ] as const);
 
