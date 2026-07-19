@@ -124,6 +124,51 @@ type HistoryDay = {
   consumption: string | number;
 };
 type HistoryApi = { data?: HistoryDay[]; last_active?: string; serial_number?: string | null };
+type DashboardConsumer = {
+  user_id: string;
+  device_id: string;
+  serial_number: string | null;
+  block_id: string | null;
+  location_id: string | null;
+  full_name: string | null;
+  phone: string | null;
+  email: string | null;
+  is_active: boolean | null;
+};
+
+function isValidDashboardConsumer(c: DashboardConsumer): boolean {
+  const block = (c.block_id ?? "").trim();
+  const device = (c.device_id ?? "").trim();
+  return !!device
+    && block !== "00"
+    && device !== MAIN_METER_DEVICE
+    && device !== "MAIN"
+    && device !== "0"
+    && c.is_active !== false;
+}
+
+function canonicalizeConsumers(rows: DashboardConsumer[]): DashboardConsumer[] {
+  const byExactMeter = new Map<string, DashboardConsumer>();
+  for (const row of rows) {
+    const key = [row.device_id, row.block_id ?? "", row.serial_number ?? ""].join("|");
+    const current = byExactMeter.get(key);
+    if (!current) {
+      byExactMeter.set(key, row);
+      continue;
+    }
+    const currentScore = (current.email ? 2 : 0) + (current.phone ? 1 : 0);
+    const nextScore = (row.email ? 2 : 0) + (row.phone ? 1 : 0);
+    if (nextScore > currentScore) byExactMeter.set(key, row);
+  }
+  return Array.from(byExactMeter.values()).sort((a, b) => {
+    const aBlock = a.block_id ?? "";
+    const bBlock = b.block_id ?? "";
+    const aNum = Number.parseInt(aBlock, 10);
+    const bNum = Number.parseInt(bBlock, 10);
+    if (!Number.isNaN(aNum) && !Number.isNaN(bNum) && aNum !== bNum) return aNum - bNum;
+    return aBlock.localeCompare(bBlock, undefined, { numeric: true }) || a.device_id.localeCompare(b.device_id);
+  });
+}
 
 async function sfLatest(device: string, token: string): Promise<LatestApi | null> {
   try {
@@ -139,8 +184,9 @@ async function sfHistory(device: string, startIso: string, endIso: string, token
     const url = `${SENSEFLOW_HISTORY}?device=${encodeURIComponent(device)}&start=${encodeURIComponent(startIso)}&end=${encodeURIComponent(endIso)}`;
     const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
     if (!r.ok) return [];
-    const j = (await r.json()) as HistoryApi;
-    return j.data ?? [];
+    const j = (await r.json()) as HistoryApi | HistoryDay[];
+    if (Array.isArray(j)) return j;
+    return Array.isArray(j.data) ? j.data : [];
   } catch { return []; }
 }
 
@@ -149,32 +195,82 @@ export const getAdminDashboardStats = createServerFn({ method: "POST" })
     start: z.string(), // yyyy-mm-dd
     end: z.string(),   // yyyy-mm-dd
     locationId: z.string().uuid().optional().nullable(),
+    userId: z.string().uuid().optional().nullable(),
+    topLimit: z.number().int().min(1).max(50).optional(),
   }).parse(d))
   .handler(async ({ data }) => {
     const token = process.env.SENSEFLOW_API_TOKEN;
     if (!token) throw new Error("SENSEFLOW_API_TOKEN not configured");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-    const [consumersRes, secretariesRes, locationsRes, detailsRes] = await Promise.all([
-      supabaseAdmin.from("user_roles").select("user_id", { count: "exact", head: true }).eq("role", "consumer"),
-      supabaseAdmin.from("user_roles").select("user_id", { count: "exact", head: true }).eq("role", "secretary"),
+    const [consumerRolesRes, secretaryRolesRes, locationsRes] = await Promise.all([
+      supabaseAdmin.from("user_roles").select("user_id").eq("role", "consumer"),
+      supabaseAdmin.from("user_roles").select("user_id").eq("role", "secretary"),
       supabaseAdmin.from("locations").select("id", { count: "exact", head: true }),
-      supabaseAdmin.from("consumer_details").select("user_id, device_id, block_id, location_id").not("device_id", "is", null),
     ]);
-    let details = (detailsRes.data ?? []) as Array<{ user_id: string; device_id: string; block_id: string | null; location_id: string | null }>;
+    if (consumerRolesRes.error) throw new Error(consumerRolesRes.error.message);
+    if (secretaryRolesRes.error) throw new Error(secretaryRolesRes.error.message);
+
+    const consumerIds = Array.from(new Set((consumerRolesRes.data ?? []).map((r) => r.user_id)));
+    const [detailsRes, profilesRes, secretaryLocationsRes] = await Promise.all([
+      consumerIds.length
+        ? supabaseAdmin
+          .from("consumer_details")
+          .select("user_id, device_id, serial_number, block_id, location_id")
+          .in("user_id", consumerIds)
+          .not("device_id", "is", null)
+        : Promise.resolve({ data: [] as any[], error: null }),
+      consumerIds.length
+        ? supabaseAdmin
+          .from("profiles")
+          .select("id, full_name, phone, email, is_active")
+          .in("id", consumerIds)
+        : Promise.resolve({ data: [] as any[], error: null }),
+      data.locationId
+        ? supabaseAdmin.from("secretary_locations").select("secretary_id").eq("location_id", data.locationId)
+        : Promise.resolve({ data: null as any, error: null }),
+    ]);
+    if (detailsRes.error) throw new Error(detailsRes.error.message);
+    if (profilesRes.error) throw new Error(profilesRes.error.message);
+    if (secretaryLocationsRes.error) throw new Error(secretaryLocationsRes.error.message);
+
+    const profileMap = new Map((profilesRes.data ?? []).map((p: any) => [p.id, p]));
+    const allConsumerDetails = ((detailsRes.data ?? []) as any[]).map((d) => {
+      const p = profileMap.get(d.user_id) as any | undefined;
+      return {
+        user_id: d.user_id,
+        device_id: d.device_id,
+        serial_number: d.serial_number,
+        block_id: d.block_id,
+        location_id: d.location_id,
+        full_name: p?.full_name ?? null,
+        phone: p?.phone ?? null,
+        email: p?.email ?? null,
+        is_active: p?.is_active ?? true,
+      } satisfies DashboardConsumer;
+    });
+
+    const mainInSet = allConsumerDetails.some((d) => d.device_id === MAIN_METER_DEVICE && d.is_active !== false);
+    let details = canonicalizeConsumers(allConsumerDetails.filter(isValidDashboardConsumer));
     if (data.locationId) details = details.filter((d) => d.location_id === data.locationId);
+    if (data.userId) details = details.filter((d) => d.user_id === data.userId);
+
+    let secretaryCount = (secretaryRolesRes.data ?? []).length;
+    if (data.locationId) {
+      secretaryCount = new Set(((secretaryLocationsRes.data ?? []) as any[]).map((s) => s.secretary_id)).size;
+    }
 
     const startIso = `${data.start}T00:00:00Z`;
     const endIso = `${data.end}T23:59:59Z`;
 
     // Analytics devices exclude the Main Meter (avoid double-count with sub meters)
     const analyticsDevices = details.map((d) => d.device_id).filter((id) => id !== MAIN_METER_DEVICE);
-    const mainInSet = details.some((d) => d.device_id === MAIN_METER_DEVICE);
 
     // Fetch histories for analytics + main meter in parallel
-    const [mainHistory, analyticsHistories, mainLatest] = await Promise.all([
+    const [mainHistory, analyticsHistories, analyticsLatest, mainLatest] = await Promise.all([
       sfHistory(MAIN_METER_DEVICE, startIso, endIso, token),
       Promise.all(analyticsDevices.map((d) => sfHistory(d, startIso, endIso, token))),
+      Promise.all(analyticsDevices.map((d) => sfLatest(d, token))),
       sfLatest(MAIN_METER_DEVICE, token),
     ]);
 
@@ -199,7 +295,8 @@ export const getAdminDashboardStats = createServerFn({ method: "POST" })
       }
     }
     const totalUsageKl = mainLatest?.meter_reading != null ? Number(mainLatest.meter_reading) : 0;
-    const flowRate = mainLatest?.flow_rate != null ? Number(mainLatest.flow_rate) : 0;
+    const lastLiveData = [...analyticsLatest].reverse().find(Boolean);
+    const flowRate = lastLiveData?.flow_rate != null ? Number(lastLiveData.flow_rate) : 0;
 
     // Daily consumption trend (sum across analytics devices per day)
     const byDay = new Map<string, number>();
@@ -216,32 +313,30 @@ export const getAdminDashboardStats = createServerFn({ method: "POST" })
     );
 
     // Leaderboard (top consumers in range)
-    const perDevice = analyticsDevices.map((dev, i) => ({
-      device_id: dev,
-      total_l: Math.round(analyticsHistories[i].reduce((a, d) => a + Number(d.consumption || 0), 0) * 1000),
-    }));
-    perDevice.sort((a, b) => b.total_l - a.total_l);
-    const top = perDevice.slice(0, 20);
-    const topDetails = details.filter((d) => top.some((t) => t.device_id === d.device_id));
-    const profiles = topDetails.length
-      ? (await supabaseAdmin.from("profiles").select("id, full_name, phone").in("id", topDetails.map((d) => d.user_id))).data || []
-      : [];
-    const pMap = new Map(profiles.map((p: any) => [p.id, p]));
-    const dMap = new Map(details.map((d) => [d.device_id, d]));
+    const groupedByDevice = new Map<string, { device_id: string; total_l: number; detail: DashboardConsumer }>();
+    analyticsDevices.forEach((dev, i) => {
+      const total = Math.round(analyticsHistories[i].reduce((a, d) => a + Number(d.consumption || 0), 0) * 1000);
+      const existing = groupedByDevice.get(dev);
+      if (existing) existing.total_l += total;
+      else groupedByDevice.set(dev, { device_id: dev, total_l: total, detail: details[i] });
+    });
+    const top = Array.from(groupedByDevice.values())
+      .sort((a, b) => b.total_l - a.total_l)
+      .slice(0, data.topLimit ?? 20);
     const leaders = top.map((t) => {
-      const det = dMap.get(t.device_id);
-      const p = det ? pMap.get(det.user_id) : null;
+      const det = t.detail;
+      const labelName = det.full_name || det.phone || t.device_id;
       return {
         id: det?.user_id || t.device_id,
-        name: (p as any)?.full_name || `Block ${det?.block_id ?? "?"}`,
+        name: det?.block_id ? `${det.block_id} · ${labelName}` : labelName,
         device_id: t.device_id,
         consumption: t.total_l,
       };
     });
 
     return {
-      consumers: consumersRes.count ?? 0,
-      secretaries: secretariesRes.count ?? 0,
+      consumers: details.length,
+      secretaries: secretaryCount,
       locations: locationsRes.count ?? 0,
       mainMeter: {
         available: mainInSet && !!mainLatest,
