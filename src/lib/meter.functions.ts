@@ -224,7 +224,7 @@ async function sfLatest(device: string, token: string): Promise<LatestApi | null
 async function sfHistory(device: string, startIso: string, endIso: string, token: string): Promise<HistoryDay[]> {
   try {
     const url = `${SENSEFLOW_HISTORY}?device=${encodeURIComponent(device)}&start=${encodeURIComponent(startIso)}&end=${encodeURIComponent(endIso)}`;
-    const r = await fetchWithTimeout(url, token, 30000);
+    const r = await fetchWithTimeout(url, token, 12000);
     if (!r.ok) return [];
     const j = (await r.json()) as HistoryApi | HistoryDay[];
     if (Array.isArray(j)) return j;
@@ -342,7 +342,7 @@ export const getAdminDashboardStats = createServerFn({ method: "POST" })
       withDeadline(
         mapWithConcurrency(analyticsDevices, 5, (d) => sfHistory(d, startIso, endIso, token)),
         analyticsDevices.map(() => [] as HistoryDay[]),
-        55000,
+        90000,
       ),
     ] as const);
 
