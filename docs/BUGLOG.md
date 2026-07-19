@@ -1,5 +1,13 @@
 # Bug Log
 
+## [v1.0.13] – 2026-07-19 (15:55)
+
+### Fixed
+- Bug: Consumer dashboard was empty because auth is disabled and no `user.id` was bound.
+  - Cause: `useSession` returned `null` user when no Supabase session exists, so all `consumer_details`/`meter_readings` queries filtered by `user_id` returned nothing.
+  - Fix: For testing, when the active role is `consumer`, bind `useSession` to DHARTI (Block 3, `USFL_WM0013`, user_id `846b96ef-8525-413f-a8ac-720b93569214`). Admin/secretary use a placeholder id (those pages don't rely on user.id).
+  - Files: src/hooks/use-session.ts
+
 ## [v1.0.12] – 2026-07-19 (15:40)
 
 ### Fixed
