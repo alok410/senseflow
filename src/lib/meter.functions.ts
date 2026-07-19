@@ -230,7 +230,6 @@ export const getAdminDashboardStats = createServerFn({ method: "POST" })
     topLimit: z.number().int().min(1).max(50).optional(),
   }).parse(d))
   .handler(async ({ data }) => {
-    console.log("admin dashboard stats start", data);
     const token = process.env.SENSEFLOW_API_TOKEN;
     if (!token) throw new Error("SENSEFLOW_API_TOKEN not configured");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -265,11 +264,6 @@ export const getAdminDashboardStats = createServerFn({ method: "POST" })
     if (detailsRes.error) throw new Error(detailsRes.error.message);
     if (profilesRes.error) throw new Error(profilesRes.error.message);
     if (secretaryLocationsRes.error) throw new Error(secretaryLocationsRes.error.message);
-    console.log("admin dashboard stats db loaded", {
-      consumerRoles: consumerRolesRes.data?.length ?? 0,
-      details: detailsRes.data?.length ?? 0,
-      profiles: profilesRes.data?.length ?? 0,
-    });
 
     const profileMap = new Map((profilesRes.data ?? []).map((p: any) => [p.id, p]));
     const allConsumerDetails = ((detailsRes.data ?? []) as any[]).map((d) => {
@@ -302,35 +296,34 @@ export const getAdminDashboardStats = createServerFn({ method: "POST" })
 
     // Analytics devices exclude the Main Meter (avoid double-count with sub meters)
     const analyticsDevices = details.map((d) => d.device_id).filter((id) => id !== MAIN_METER_DEVICE);
-    console.log("admin dashboard stats devices", analyticsDevices.length);
+    const fastEmpty = {
+      consumers: details.length,
+      secretaries: secretaryCount,
+      locations: locationsRes.count ?? 0,
+      mainMeter: {
+        available: mainInSet,
+        todaysUsageL: 0,
+        thisMonthL: 0,
+        totalUsageL: 0,
+        lastReadingAt: null as string | null,
+      },
+      flowRate: 0,
+      totalConsumptionL: 0,
+      trend: [] as Array<{ date: string; consumption: number }>,
+      leaders: [] as Array<{ id: string; name: string; device_id: string; consumption: number }>,
+    };
 
-    if (process.env.SENSEFLOW_DISABLE_LIVE === "1") {
-      return {
-        consumers: details.length,
-        secretaries: secretaryCount,
-        locations: locationsRes.count ?? 0,
-        mainMeter: {
-          available: mainInSet,
-          todaysUsageL: 0,
-          thisMonthL: 0,
-          totalUsageL: 0,
-          lastReadingAt: null,
-        },
-        flowRate: 0,
-        totalConsumptionL: 0,
-        trend: [],
-        leaders: [],
-      };
-    }
-
-    // Fetch histories for analytics + main meter in parallel
-    const [mainHistory, analyticsHistories, analyticsLatest, mainLatest] = await Promise.all([
+    // Keep the dashboard responsive. If the external API is unavailable, return base counts immediately.
+    const livePromise = Promise.all([
       sfHistory(MAIN_METER_DEVICE, startIso, endIso, token),
       mapWithConcurrency(analyticsDevices, Math.max(1, analyticsDevices.length), (d) => sfHistory(d, startIso, endIso, token)),
       mapWithConcurrency(analyticsDevices, Math.max(1, analyticsDevices.length), (d) => sfLatest(d, token)),
       sfLatest(MAIN_METER_DEVICE, token),
-    ]);
-    console.log("admin dashboard stats api loaded", { mainHistory: mainHistory.length, histories: analyticsHistories.length });
+    ] as const);
+    const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 5500));
+    const liveResult = await Promise.race([livePromise, timeoutPromise]);
+    if (!liveResult) return fastEmpty;
+    const [mainHistory, analyticsHistories, analyticsLatest, mainLatest] = liveResult;
 
     // Main meter overview (values in kilolitres -> convert to litres)
     const todayStr = new Date().toISOString().slice(0, 10);
