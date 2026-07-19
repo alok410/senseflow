@@ -293,8 +293,8 @@ export const getAdminDashboardStats = createServerFn({ method: "POST" })
     // Fetch histories for analytics + main meter in parallel
     const [mainHistory, analyticsHistories, analyticsLatest, mainLatest] = await Promise.all([
       sfHistory(MAIN_METER_DEVICE, startIso, endIso, token),
-      mapWithConcurrency(analyticsDevices, 6, (d) => sfHistory(d, startIso, endIso, token)),
-      mapWithConcurrency(analyticsDevices, 6, (d) => sfLatest(d, token)),
+      mapWithConcurrency(analyticsDevices, Math.max(1, analyticsDevices.length), (d) => sfHistory(d, startIso, endIso, token)),
+      mapWithConcurrency(analyticsDevices, Math.max(1, analyticsDevices.length), (d) => sfLatest(d, token)),
       sfLatest(MAIN_METER_DEVICE, token),
     ]);
 
