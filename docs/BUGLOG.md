@@ -1,5 +1,13 @@
 # Bug Log
 
+## [v1.0.15] – 2026-07-19 (16:25)
+
+### Fixed
+- Bug: Refresh reading failed with `invalid input value for enum reading_source: "api"`.
+  - Cause: `fetchAndStoreLatestReading` inserted `source: "api"`, but the `reading_source` enum only allows `smart_meter` and `manual`.
+  - Fix: Insert `source: "smart_meter"` for API-sourced readings.
+  - Files: src/lib/meter.functions.ts
+
 ## [v1.0.14] – 2026-07-19 (16:15)
 
 ### Fixed
