@@ -170,11 +170,22 @@ function canonicalizeConsumers(rows: DashboardConsumer[]): DashboardConsumer[] {
   });
 }
 
+async function fetchWithTimeout(url: string, token: string, timeoutMs = 8000): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function sfLatest(device: string, token: string): Promise<LatestApi | null> {
   try {
-    const r = await fetch(`${SENSEFLOW_BASE}?device=${encodeURIComponent(device)}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const r = await fetchWithTimeout(`${SENSEFLOW_BASE}?device=${encodeURIComponent(device)}`, token, 6000);
     if (!r.ok) return null;
     return (await r.json()) as LatestApi;
   } catch { return null; }
@@ -182,7 +193,7 @@ async function sfLatest(device: string, token: string): Promise<LatestApi | null
 async function sfHistory(device: string, startIso: string, endIso: string, token: string): Promise<HistoryDay[]> {
   try {
     const url = `${SENSEFLOW_HISTORY}?device=${encodeURIComponent(device)}&start=${encodeURIComponent(startIso)}&end=${encodeURIComponent(endIso)}`;
-    const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    const r = await fetchWithTimeout(url, token, 8000);
     if (!r.ok) return [];
     const j = (await r.json()) as HistoryApi | HistoryDay[];
     if (Array.isArray(j)) return j;
