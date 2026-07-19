@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { subDays, format } from "date-fns";
 import { Users, UserCheck, Droplets, Activity, BarChart3 } from "lucide-react";
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
@@ -28,6 +28,7 @@ function AdminDashboard() {
   const [start, setStart] = useState<string>(format(subDays(new Date(), 7), "yyyy-MM-dd"));
   const [end, setEnd] = useState<string>(format(new Date(), "yyyy-MM-dd"));
   const [locId, setLocId] = useState<string>(ALL);
+  const [userId, setUserId] = useState<string>(ALL);
   const [topLimit, setTopLimit] = useState<number>(10);
 
   const setRange = (d: 7 | 15 | 30) => {
@@ -41,17 +42,62 @@ function AdminDashboard() {
     queryFn: async () => (await supabase.from("locations").select("id, name, code").order("name")).data || [],
   });
 
+  const consumers = useQuery({
+    queryKey: ["admin-dashboard-consumers"],
+    queryFn: async () => {
+      const { data: roles, error: roleError } = await supabase.from("user_roles").select("user_id").eq("role", "consumer");
+      if (roleError) throw roleError;
+      const ids = (roles || []).map((r) => r.user_id);
+      if (!ids.length) return [] as Array<{ id: string; name: string; locationId: string | null }>;
+      const [{ data: profiles, error: profileError }, { data: details, error: detailsError }] = await Promise.all([
+        supabase.from("profiles").select("id, full_name, phone, is_active").in("id", ids),
+        supabase.from("consumer_details").select("user_id, device_id, block_id, location_id").in("user_id", ids).not("device_id", "is", null),
+      ]);
+      if (profileError) throw profileError;
+      if (detailsError) throw detailsError;
+      const pMap = new Map((profiles || []).map((p) => [p.id, p]));
+      const byKey = new Map<string, { id: string; name: string; locationId: string | null; block: string; device: string }>();
+      (details || []).forEach((d) => {
+        const p = pMap.get(d.user_id);
+        if (!p || p.is_active === false || !d.device_id || d.device_id === "USFL_FL7053" || d.block_id === "00") return;
+        const key = `${d.device_id}|${d.block_id ?? ""}`;
+        if (!byKey.has(key)) {
+          byKey.set(key, {
+            id: d.user_id,
+            name: `${d.block_id ? `${d.block_id} · ` : ""}${p.full_name || p.phone || d.device_id}`,
+            locationId: d.location_id,
+            block: d.block_id || "",
+            device: d.device_id,
+          });
+        }
+      });
+      return Array.from(byKey.values())
+        .sort((a, b) => a.block.localeCompare(b.block, undefined, { numeric: true }) || a.name.localeCompare(b.name))
+        .map(({ id, name, locationId }) => ({ id, name, locationId }));
+    },
+  });
+
+  const usersForDropdown = useMemo(() => {
+    return (consumers.data || []).filter((c) => locId === ALL || c.locationId === locId);
+  }, [consumers.data, locId]);
+
   const dash = useQuery({
-    queryKey: ["admin-dashboard-live", start, end, locId],
+    queryKey: ["admin-dashboard-live", start, end, locId, userId, topLimit],
     queryFn: () => getAdminDashboardStats({
-      data: { start, end, locationId: locId === ALL ? null : locId },
+      data: {
+        start,
+        end,
+        locationId: locId === ALL ? null : locId,
+        userId: userId === ALL ? null : userId,
+        topLimit,
+      },
     }),
     staleTime: 30_000,
   });
 
   const s = dash.data;
   const trend = (s?.trend || []).map((t) => ({ date: format(new Date(t.date), "MMM d"), consumption: t.consumption }));
-  const leaders = (s?.leaders || []).slice(0, topLimit);
+  const leaders = s?.leaders || [];
   const fmtL = (n: number) => `${n.toLocaleString("en-IN")} L`;
 
   return (
@@ -99,11 +145,18 @@ function AdminDashboard() {
         <Input type="date" value={start} onChange={(e) => { setPreset(0); setStart(e.target.value); }} className="w-40" />
         <span className="text-muted-foreground text-sm">to</span>
         <Input type="date" value={end} onChange={(e) => { setPreset(0); setEnd(e.target.value); }} className="w-40" />
-        <Select value={locId} onValueChange={setLocId}>
+        <Select value={locId} onValueChange={(v) => { setLocId(v); setUserId(ALL); }}>
           <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value={ALL}>All locations</SelectItem>
             {(locs.data || []).map((l) => <SelectItem key={l.id} value={l.id}>{l.name} ({l.code})</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={userId} onValueChange={setUserId}>
+          <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>All users</SelectItem>
+            {usersForDropdown.map((u) => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
           </SelectContent>
         </Select>
         <Select value={String(topLimit)} onValueChange={(v) => setTopLimit(Number(v))}>
