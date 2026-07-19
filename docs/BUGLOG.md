@@ -1,5 +1,13 @@
 # Bug Log
 
+## [v1.0.10] – 2026-07-19 (15:05)
+
+### Fixed
+- Bug: Demo "Test" consumer appeared twice in lists and clashed with GIRIRAJ TEJRA's device.
+  - Cause: The demo seed list contained a "Test" entry sharing device `USFL_WM0010` already assigned to GIRIRAJ TEJRA.
+  - Fix: Removed the "Test" seed row and deleted the existing Test profile, consumer_details, and role rows from the database.
+  - Files: src/lib/consumers.functions.ts
+
 ## [v1.0.9] – 2026-07-19 (14:45)
 
 ### Fixed
