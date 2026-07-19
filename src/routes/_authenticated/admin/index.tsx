@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { subDays, format } from "date-fns";
@@ -30,6 +31,7 @@ function AdminDashboard() {
   const [locId, setLocId] = useState<string>(ALL);
   const [userId, setUserId] = useState<string>(ALL);
   const [topLimit, setTopLimit] = useState<number>(10);
+  const fetchDashboardStats = useServerFn(getAdminDashboardStats);
 
   const setRange = (d: 7 | 15 | 30) => {
     setPreset(d);
@@ -83,7 +85,7 @@ function AdminDashboard() {
 
   const dash = useQuery({
     queryKey: ["admin-dashboard-live", start, end, locId, userId, topLimit],
-    queryFn: () => getAdminDashboardStats({
+    queryFn: () => fetchDashboardStats({
       data: {
         start,
         end,
