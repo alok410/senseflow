@@ -1,5 +1,13 @@
 # Bug Log
 
+## [v1.0.18] – 2026-07-19 (17:00)
+
+### Fixed
+- Bug: Auth, landing and role dashboards used a flat static gradient with no shared visual identity.
+  - Cause: No animated background component; each shell relied on a plain `bg-gradient-to-br` wash.
+  - Fix: Added a WebGL `GradientWave` component and mounted it (with a translucent overlay + glass surfaces) behind the auth page, landing role picker, and the shared dashboard shell so admin/secretary/consumer all inherit the theme. No backend, API, or data-fetch logic touched.
+  - Files: src/components/ui/gradient-wave.tsx, src/routes/index.tsx, src/routes/auth.tsx, src/components/DashboardLayout.tsx
+
 ## [v1.0.17] – 2026-07-19 (16:45)
 
 ### Fixed
