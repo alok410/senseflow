@@ -324,20 +324,29 @@ export const getAdminDashboardStats = createServerFn({ method: "POST" })
       leaders: [] as Array<{ id: string; name: string; device_id: string; consumption: number }>,
     };
 
-    // Keep dashboard values partial and responsive: one slow sub-meter must not zero the main meter.
-    const [mainHistory, mainLatest] = await Promise.all([
-      withDeadline(sfHistory(MAIN_METER_DEVICE, startIso, endIso, token), [] as HistoryDay[], 35000),
-      withDeadline(sfLatest(MAIN_METER_DEVICE, token), null as LatestApi | null, 35000),
-    ] as const);
-    const analyticsHistories = await withDeadline(
-      mapWithConcurrency(analyticsDevices, Math.max(1, analyticsDevices.length), (d) => sfHistory(d, startIso, endIso, token)),
-      analyticsDevices.map(() => [] as HistoryDay[]),
-      40000,
-    );
-
-    // Main meter overview (values in kilolitres -> convert to litres)
     const todayStr = new Date().toISOString().slice(0, 10);
     const monthPrefix = todayStr.slice(0, 7); // yyyy-mm
+    const needsMonthWideHistory = !data.start.startsWith(monthPrefix) || data.start > `${monthPrefix}-01`;
+
+    // Keep dashboard values partial and responsive: one slow sub-meter must not zero the main meter.
+    const [mainHistory, mainLatest, monthWideHistory, analyticsHistories] = await Promise.all([
+      withDeadline(sfHistory(MAIN_METER_DEVICE, startIso, endIso, token), [] as HistoryDay[], 35000),
+      withDeadline(sfLatest(MAIN_METER_DEVICE, token), null as LatestApi | null, 35000),
+      needsMonthWideHistory
+        ? withDeadline(
+            sfHistory(MAIN_METER_DEVICE, `${monthPrefix}-01T00:00:00Z`, `${todayStr}T23:59:59Z`, token),
+            [] as HistoryDay[],
+            35000,
+          )
+        : Promise.resolve([] as HistoryDay[]),
+      withDeadline(
+        mapWithConcurrency(analyticsDevices, 5, (d) => sfHistory(d, startIso, endIso, token)),
+        analyticsDevices.map(() => [] as HistoryDay[]),
+        55000,
+      ),
+    ] as const);
+
+    // Main meter overview (values in kilolitres -> convert to litres)
     let todaysUsageKl = 0;
     let thisMonthKl = 0;
     for (const d of mainHistory) {
@@ -347,15 +356,10 @@ export const getAdminDashboardStats = createServerFn({ method: "POST" })
     }
     // For "This Month" we may need broader range than requested; fetch a month-wide slice if needed
     let monthFull = thisMonthKl;
-    if (!data.start.startsWith(monthPrefix) || data.start > `${monthPrefix}-01`) {
-      const mHist = await withDeadline(
-        sfHistory(MAIN_METER_DEVICE, `${monthPrefix}-01T00:00:00Z`, `${todayStr}T23:59:59Z`, token),
-        [] as HistoryDay[],
-        35000,
-      );
-      monthFull = mHist.length ? mHist.reduce((s, r) => s + consumptionKl(r), 0) : monthFull;
+    if (needsMonthWideHistory) {
+      monthFull = monthWideHistory.length ? monthWideHistory.reduce((s, r) => s + consumptionKl(r), 0) : monthFull;
       if (!todaysUsageKl) {
-        const t = mHist.find((r) => r.reading_date === todayStr);
+        const t = monthWideHistory.find((r) => r.reading_date === todayStr);
         todaysUsageKl = t ? consumptionKl(t) : 0;
       }
     }
