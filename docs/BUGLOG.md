@@ -1,5 +1,13 @@
 # Bug Log
 
+## [v1.0.16] – 2026-07-19 (16:35)
+
+### Fixed
+- Bug: Secretary dashboard had no bound identity while auth is disabled.
+  - Cause: `useSession` fell back to the admin placeholder id for the `secretary` role, so secretary-scoped queries returned nothing.
+  - Fix: Added `TEST_SECRETARY_ID` for Demo Secretary and returned that stub user when the active role is `secretary`.
+  - Files: src/hooks/use-session.ts
+
 ## [v1.0.15] – 2026-07-19 (16:25)
 
 ### Fixed
