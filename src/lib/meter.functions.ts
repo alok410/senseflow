@@ -230,6 +230,7 @@ export const getAdminDashboardStats = createServerFn({ method: "POST" })
     topLimit: z.number().int().min(1).max(50).optional(),
   }).parse(d))
   .handler(async ({ data }) => {
+    console.log("admin dashboard stats start", data);
     const token = process.env.SENSEFLOW_API_TOKEN;
     if (!token) throw new Error("SENSEFLOW_API_TOKEN not configured");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -264,6 +265,11 @@ export const getAdminDashboardStats = createServerFn({ method: "POST" })
     if (detailsRes.error) throw new Error(detailsRes.error.message);
     if (profilesRes.error) throw new Error(profilesRes.error.message);
     if (secretaryLocationsRes.error) throw new Error(secretaryLocationsRes.error.message);
+    console.log("admin dashboard stats db loaded", {
+      consumerRoles: consumerRolesRes.data?.length ?? 0,
+      details: detailsRes.data?.length ?? 0,
+      profiles: profilesRes.data?.length ?? 0,
+    });
 
     const profileMap = new Map((profilesRes.data ?? []).map((p: any) => [p.id, p]));
     const allConsumerDetails = ((detailsRes.data ?? []) as any[]).map((d) => {
@@ -296,6 +302,7 @@ export const getAdminDashboardStats = createServerFn({ method: "POST" })
 
     // Analytics devices exclude the Main Meter (avoid double-count with sub meters)
     const analyticsDevices = details.map((d) => d.device_id).filter((id) => id !== MAIN_METER_DEVICE);
+    console.log("admin dashboard stats devices", analyticsDevices.length);
 
     if (process.env.SENSEFLOW_DISABLE_LIVE === "1") {
       return {
@@ -323,6 +330,7 @@ export const getAdminDashboardStats = createServerFn({ method: "POST" })
       mapWithConcurrency(analyticsDevices, Math.max(1, analyticsDevices.length), (d) => sfLatest(d, token)),
       sfLatest(MAIN_METER_DEVICE, token),
     ]);
+    console.log("admin dashboard stats api loaded", { mainHistory: mainHistory.length, histories: analyticsHistories.length });
 
     // Main meter overview (values in kilolitres -> convert to litres)
     const todayStr = new Date().toISOString().slice(0, 10);
