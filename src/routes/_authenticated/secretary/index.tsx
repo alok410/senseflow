@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { subDays, format, startOfDay } from "date-fns";
+import { subDays, format } from "date-fns";
 import { toast } from "sonner";
 import {
   Users, Droplets, TrendingUp, FileText, IndianRupee, BarChart3, Plus, Wallet,
@@ -24,6 +24,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useSession, useMyProfile } from "@/hooks/use-session";
 import { SECRETARY_NAV } from "@/lib/nav";
 import { addCashBalance } from "@/lib/prepaid.functions";
+import { getSecretaryDashboardStats } from "@/lib/meter.functions";
 
 export const Route = createFileRoute("/_authenticated/secretary/")({
   component: SecretaryDashboard,
@@ -68,52 +69,38 @@ function SecretaryDashboard() {
     setEnd(format(new Date(), "yyyy-MM-dd"));
   };
 
-  // Assigned location + consumers
+  // Assigned location + consumers + live Senseflow usage for range
   const scope = useQuery({
-    queryKey: ["secretary-scope", user?.id ?? "no-auth"],
+    queryKey: ["secretary-scope", user?.id ?? "no-auth", selectedUser, start, end],
+    enabled: !!user,
     queryFn: async () => {
-      let locationId: string | null = null;
-      let locationName = user ? "" : "All locations";
-      if (user) {
-        const { data: sl, error: slError } = await supabase
-          .from("secretary_locations").select("location_id").eq("secretary_id", user.id).maybeSingle();
-        if (slError) throw slError;
-        locationId = sl?.location_id ?? null;
-      }
-      if (locationId) {
-        const { data: loc } = await supabase.from("locations").select("name").eq("id", locationId).maybeSingle();
-        locationName = loc?.name || "";
-      }
-      let consumers: Consumer[] = [];
-      if (locationId || !user) {
-        let query = supabase
-          .from("consumer_details")
-          .select("user_id, meter_id, device_id, serial_number, block_id, location_id");
-        if (locationId) query = query.eq("location_id", locationId);
-        const { data, error } = await query;
-        if (error) throw error;
-        const ids = (data || []).map((c) => c.user_id);
-        const { data: profiles, error: profilesError } = ids.length
-          ? await supabase.from("profiles").select("id, full_name, phone, email").in("id", ids)
-          : { data: [], error: null };
-        if (profilesError) throw profilesError;
-        const profileMap = new Map((profiles || []).map((p) => [p.id, p]));
-        consumers = ((data || []) as any[]).map((c) => {
-          const p = profileMap.get(c.user_id);
-          return ({
-          user_id: c.user_id,
-          meter_id: c.meter_id,
-          device_id: c.device_id,
-          serial_number: c.serial_number,
-          block_id: c.block_id,
-          location_id: c.location_id,
-          full_name: p?.full_name ?? null,
-          phone: p?.phone ?? null,
-          email: p?.email ?? null,
-        });
-        });
-      }
-      return { locationId, locationName, consumers };
+      const res = await getSecretaryDashboardStats({
+        data: {
+          secretaryId: user!.id,
+          start,
+          end,
+          userId: selectedUser === "all" ? null : selectedUser,
+        },
+      });
+      const consumers: Consumer[] = (res.consumers ?? []).map((c: any) => ({
+        user_id: c.user_id,
+        meter_id: null,
+        device_id: c.device_id ?? null,
+        serial_number: c.serial_number ?? null,
+        block_id: c.block_id ?? null,
+        location_id: c.location_id ?? null,
+        full_name: c.full_name ?? null,
+        phone: c.phone ?? null,
+        email: c.email ?? null,
+      }));
+      return {
+        locationId: res.locationId,
+        locationName: res.locationName,
+        consumers,
+        usageByConsumer: res.usageByConsumer as Record<string, number>,
+        trend: res.trend as Array<{ date: string; consumption: number }>,
+        totalUsageL: res.totalUsageL,
+      };
     },
   });
 
@@ -132,23 +119,6 @@ function SecretaryDashboard() {
     },
   });
 
-  // Readings scoped to filter (user + date range)
-  const readingsQ = useQuery({
-    queryKey: ["secretary-readings", consumerIds.join(","), selectedUser, start, end],
-    enabled: consumerIds.length > 0,
-    queryFn: async () => {
-      const ids = selectedUser === "all" ? consumerIds : [selectedUser];
-      const { data } = await supabase
-        .from("meter_readings")
-        .select("consumer_id, consumption, reading, reading_date")
-        .in("consumer_id", ids)
-        .gte("reading_date", start)
-        .lte("reading_date", `${end}T23:59:59.999Z`)
-        .order("reading_date", { ascending: true });
-      return data || [];
-    },
-  });
-
   // Prepaid balances for assigned consumers
   const balancesQ = useQuery({
     queryKey: ["secretary-balances", consumerIds.join(",")],
@@ -161,33 +131,30 @@ function SecretaryDashboard() {
   });
 
   const invoices = invoicesQ.data || [];
-  const readings = readingsQ.data || [];
 
   const pendingInvoices = invoices.filter((i) => i.status === "pending").length;
   const totalOutstanding = invoices
     .filter((i) => i.status !== "paid")
     .reduce((s, i) => s + Number(i.total_amount || 0), 0);
 
-  const totalUsage = readings.reduce((s, r) => s + Number(r.consumption || 0), 0);
+  const totalUsage = scope.data?.totalUsageL ?? 0;
   const avgUsagePerUser = consumers.length ? totalUsage / consumers.length : 0;
 
-  // Daily consumption chart
+  // Daily consumption chart (liters, from live Senseflow history)
   const byDay = useMemo(() => {
-    const m = new Map<string, number>();
-    readings.forEach((r) => {
-      const d = format(startOfDay(new Date(r.reading_date)), "yyyy-MM-dd");
-      m.set(d, (m.get(d) || 0) + Number(r.consumption || 0));
-    });
-    return Array.from(m.entries()).sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([d, v]) => ({ date: format(new Date(d), "dd/MM"), consumption: Number(v.toFixed(2)) }));
-  }, [readings]);
+    return (scope.data?.trend ?? []).map((t) => ({
+      date: format(new Date(t.date), "dd/MM"),
+      consumption: t.consumption,
+    }));
+  }, [scope.data?.trend]);
 
-  // Per-consumer totals in range (for Top 5 + table)
+  // Per-consumer totals in range (from live Senseflow history)
   const usageByConsumer = useMemo(() => {
     const m = new Map<string, number>();
-    readings.forEach((r) => m.set(r.consumer_id, (m.get(r.consumer_id) || 0) + Number(r.consumption || 0)));
+    const src = scope.data?.usageByConsumer ?? {};
+    Object.entries(src).forEach(([k, v]) => m.set(k, Number(v || 0)));
     return m;
-  }, [readings]);
+  }, [scope.data?.usageByConsumer]);
 
   const top5 = useMemo(() => {
     return consumers
@@ -307,7 +274,7 @@ function SecretaryDashboard() {
               <CardDescription>Based on selected user & date range</CardDescription>
             </CardHeader>
             <CardContent className="h-72">
-              {readingsQ.isLoading ? (
+              {scope.isLoading ? (
                 <div className="flex h-full items-center justify-center text-muted-foreground">Loading…</div>
               ) : byDay.length ? (
                 <ResponsiveContainer width="100%" height="100%">
