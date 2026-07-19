@@ -1,5 +1,13 @@
 # Bug Log
 
+## [v1.0.3] – 2026-07-19 (12:20)
+
+### Fixed
+- Bug: Admin actions (create location, create/update/delete users, seed demo, set water rate, mark invoice paid, fetch meter reading, add cash balance) all failed with "Unauthorized: No authorization header provided".
+  - Cause: After removing the login flow in v1.0.2, every server function still had `.middleware([requireSupabaseAuth])` and called `context.userId` / `assertAdmin(context)`, which rejects any request without a Supabase bearer token.
+  - Fix: Stripped `requireSupabaseAuth` middleware and admin/role checks from all `src/lib/*.functions.ts` handlers, and swapped `recorded_by` / `updated_by: context.userId` for `null` (columns are nullable). Auth middleware/attacher files are left in place so auth can be re-enabled by putting the middleware back later.
+  - Files: src/lib/locations.functions.ts, src/lib/consumers.functions.ts, src/lib/secretaries.functions.ts, src/lib/admin.functions.ts, src/lib/meter.functions.ts, src/lib/prepaid.functions.ts, src/lib/rates.functions.ts, src/lib/invoices.functions.ts
+
 ## [v1.0.2] – 2026-07-19 (12:00)
 
 ### Fixed
