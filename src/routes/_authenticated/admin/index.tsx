@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { subDays, format } from "date-fns";
@@ -13,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { supabase } from "@/integrations/supabase/client";
 import { useSession, useMyProfile } from "@/hooks/use-session";
 import { ADMIN_NAV } from "@/lib/nav";
+import { getAdminDashboardStats } from "@/lib/meter.functions";
 
 export const Route = createFileRoute("/_authenticated/admin/")({
   component: AdminDashboard,
@@ -31,6 +33,7 @@ type DashboardConsumerRow = {
 function AdminDashboard() {
   const { user } = useSession();
   const { data: profile } = useMyProfile(user);
+  const getLiveStats = useServerFn(getAdminDashboardStats);
   const [preset, setPreset] = useState<7 | 15 | 30 | 0>(7);
   const [start, setStart] = useState<string>(format(subDays(new Date(), 7), "yyyy-MM-dd"));
   const [end, setEnd] = useState<string>(format(new Date(), "yyyy-MM-dd"));
@@ -144,6 +147,21 @@ function AdminDashboard() {
     enabled: !!consumers.data,
   });
 
+  const liveStats = useQuery({
+    queryKey: ["admin-dashboard-live-stats", start, end, locId, userId, topLimit],
+    queryFn: () => getLiveStats({
+      data: {
+        start,
+        end,
+        locationId: locId === ALL ? null : locId,
+        userId: userId === ALL ? null : userId,
+        topLimit,
+      },
+    }),
+    retry: false,
+    staleTime: 60_000,
+  });
+
   const usersForDropdown = useMemo(() => {
     return (consumers.data || []).filter((c) => locId === ALL || c.locationId === locId);
   }, [consumers.data, locId]);
@@ -151,14 +169,17 @@ function AdminDashboard() {
   const filteredConsumers = (consumers.data || []).filter((c) =>
     (locId === ALL || c.locationId === locId) && (userId === ALL || c.id === userId),
   );
+  const live = liveStats.data;
+  const liveTrend = live?.trend ?? [];
+  const liveLeaders = live?.leaders ?? [];
   const s = {
     consumers: filteredConsumers.length,
     secretaries: secretaries.data ?? 0,
-    mainMeter: { todaysUsageL: 0, thisMonthL: 0, totalUsageL: 0 },
-    flowRate: localReadings.data?.flowRate ?? 0,
-    totalConsumptionL: localReadings.data?.totalConsumptionL ?? 0,
-    trend: localReadings.data?.trend ?? [],
-    leaders: localReadings.data?.leaders ?? [],
+    mainMeter: live?.mainMeter ?? { todaysUsageL: 0, thisMonthL: 0, totalUsageL: 0 },
+    flowRate: live?.flowRate ?? localReadings.data?.flowRate ?? 0,
+    totalConsumptionL: live?.totalConsumptionL ?? localReadings.data?.totalConsumptionL ?? 0,
+    trend: liveTrend.length ? liveTrend : (localReadings.data?.trend ?? []),
+    leaders: liveLeaders.length ? liveLeaders : (localReadings.data?.leaders ?? []),
   };
   const trend = (s?.trend || []).map((t) => ({ date: format(new Date(t.date), "MMM d"), consumption: t.consumption }));
   const leaders = s?.leaders || [];
@@ -254,7 +275,7 @@ function AdminDashboard() {
                   <Line type="monotone" dataKey="consumption" stroke="hsl(var(--primary))" />
                 </LineChart>
               </ResponsiveContainer>
-            ) : <p className="text-sm text-muted-foreground">{localReadings.isLoading ? "Loading readings…" : "No consumption in range."}</p>}
+            ) : <p className="text-sm text-muted-foreground">{liveStats.isLoading || localReadings.isLoading ? "Loading readings…" : "No consumption in range."}</p>}
           </CardContent>
         </Card>
 
