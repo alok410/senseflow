@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { format, parseISO, startOfMonth, subDays } from "date-fns";
+import { format, parseISO, subDays } from "date-fns";
 import {
   Gauge, IndianRupee, FileText, Wallet, RefreshCw, Loader2, Gift,
   TrendingUp, BarChart3, Clock, Droplets, CreditCard,
