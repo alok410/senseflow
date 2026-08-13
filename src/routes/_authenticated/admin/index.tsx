@@ -124,7 +124,7 @@ function AdminDashboard() {
       let flowRate = 0;
       for (const row of data || []) {
         const day = String(row.reading_date).slice(0, 10);
-        const litres = Number(row.consumption || 0) * 1000;
+        const litres = Math.max(0, Number(row.consumption || 0)) * 1000;
         byDay.set(day, (byDay.get(day) || 0) + litres);
         byUser.set(row.consumer_id, (byUser.get(row.consumer_id) || 0) + litres);
         if (row.flow_rate != null) flowRate = Number(row.flow_rate) || flowRate;
@@ -270,7 +270,7 @@ function AdminDashboard() {
                 <LineChart data={trend}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="date" fontSize={10} />
-                  <YAxis fontSize={10} />
+                  <YAxis fontSize={10} domain={[0, "auto"]} />
                   <Tooltip />
                   <Line type="monotone" dataKey="consumption" stroke="hsl(var(--primary))" />
                 </LineChart>
@@ -288,7 +288,7 @@ function AdminDashboard() {
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={leaders} layout="vertical" margin={{ left: 40 }}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis type="number" fontSize={10} />
+                  <XAxis type="number" fontSize={10} domain={[0, "auto"]} />
                   <YAxis type="category" dataKey="name" fontSize={10} width={110} />
                   <Tooltip />
                   <Bar dataKey="consumption" fill="hsl(var(--primary))" />

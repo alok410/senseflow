@@ -281,7 +281,7 @@ function SecretaryDashboard() {
                   <LineChart data={byDay}>
                     <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
                     <XAxis dataKey="date" fontSize={11} />
-                    <YAxis fontSize={11} />
+                    <YAxis fontSize={11} domain={[0, "auto"]} />
                     <Tooltip />
                     <Line type="monotone" dataKey="consumption" stroke="hsl(var(--primary))" strokeWidth={2} />
                   </LineChart>
@@ -302,7 +302,7 @@ function SecretaryDashboard() {
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={top5} layout="vertical" margin={{ left: 20 }}>
                     <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
-                    <XAxis type="number" fontSize={11} />
+                    <XAxis type="number" fontSize={11} domain={[0, "auto"]} />
                     <YAxis type="category" dataKey="name" width={130} fontSize={11}
                            tickFormatter={(v: string) => v.length > 14 ? v.slice(0, 14) + "…" : v} />
                     <Tooltip formatter={(v: number) => [`${v.toLocaleString()} L`, "Usage"]} />

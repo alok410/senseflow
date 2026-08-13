@@ -188,7 +188,7 @@ function ConsumerDashboard() {
                 <LineChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="label" fontSize={10} />
-                  <YAxis fontSize={10} />
+                  <YAxis fontSize={10} domain={[0, "auto"]} />
                   <Tooltip />
                   <Line type="monotone" dataKey="consumption" stroke="hsl(var(--primary))" strokeWidth={2} />
                 </LineChart>

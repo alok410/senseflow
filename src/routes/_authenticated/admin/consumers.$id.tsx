@@ -93,11 +93,11 @@ function ConsumerAnalysis() {
 
   const cd = consumer.data?.consumer_details;
   const latest = readings.data?.[readings.data.length - 1];
-  const totalConsumption = (readings.data || []).reduce((s, r) => s + Number(r.consumption || 0), 0);
+  const totalConsumption = (readings.data || []).reduce((s, r) => s + Math.max(0, Number(r.consumption || 0)), 0);
   const dailyMap = new Map<string, number>();
   (readings.data || []).forEach((r) => {
     const day = format(startOfDay(new Date(r.reading_date)), "yyyy-MM-dd");
-    dailyMap.set(day, (dailyMap.get(day) || 0) + Number(r.consumption || 0));
+    dailyMap.set(day, (dailyMap.get(day) || 0) + Math.max(0, Number(r.consumption || 0)));
   });
   const dailyData = Array.from(dailyMap.entries()).map(([date, consumption]) => ({
     date: format(new Date(date), "MMM d"), consumption: Number(consumption.toFixed(2)),
@@ -157,7 +157,7 @@ function ConsumerAnalysis() {
                 <LineChart data={lineData}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="time" fontSize={10} />
-                  <YAxis fontSize={10} />
+                  <YAxis fontSize={10} domain={[0, "auto"]} />
                   <Tooltip />
                   <Line type="monotone" dataKey="reading" stroke="hsl(var(--primary))" dot={false} />
                 </LineChart>
@@ -174,7 +174,7 @@ function ConsumerAnalysis() {
                 <BarChart data={dailyData}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="date" fontSize={10} />
-                  <YAxis fontSize={10} />
+                  <YAxis fontSize={10} domain={[0, "auto"]} />
                   <Tooltip />
                   <Bar dataKey="consumption" fill="hsl(var(--primary))" />
                 </BarChart>

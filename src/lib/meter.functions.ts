@@ -175,7 +175,9 @@ export const getConsumerDashboardStats = createServerFn({ method: "POST" })
     const todayRow = monthHistory.find((d) => d.reading_date === todayStr)
       ?? rangeHistory.find((d) => d.reading_date === todayStr);
     const todaysUsageL = todayRow ? Math.round(consumptionKl(todayRow) * 1000) : 0;
-    const latestClosing = monthHistory.at(-1)?.closing_reading ?? rangeHistory.at(-1)?.closing_reading;
+    const sortedMonthHistory = monthHistory.slice().sort((a, b) => a.reading_date.localeCompare(b.reading_date));
+    const sortedRangeHistory = rangeHistory.slice().sort((a, b) => a.reading_date.localeCompare(b.reading_date));
+    const latestClosing = sortedMonthHistory.at(-1)?.closing_reading ?? sortedRangeHistory.at(-1)?.closing_reading;
     const totalUsageL = latest?.meter_reading != null
       ? Math.round(Number(latest.meter_reading) * 1000)
       : Math.round(Number(latestClosing || 0) * 1000);
@@ -257,9 +259,51 @@ function canonicalizeConsumers(rows: DashboardConsumer[]): DashboardConsumer[] {
   });
 }
 
-function consumptionKl(day: HistoryDay): number {
-  // Match reference dashboard: use raw consumption (may be negative on meter resets).
-  return Number(day.consumption || 0);
+export type RawReading = {
+  meter_reading: string | number;
+  reading_datetime: string;
+};
+
+export function computeRawReadingsConsumption(data: RawReading[]): number {
+  if (!data || data.length < 2) return 0;
+  // Explicitly sort array by reading_datetime ascending (oldest first)
+  const sorted = [...data].sort(
+    (a, b) => new Date(a.reading_datetime).getTime() - new Date(b.reading_datetime).getTime()
+  );
+
+  let totalConsumption = 0;
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = parseFloat(String(sorted[i - 1].meter_reading));
+    const curr = parseFloat(String(sorted[i].meter_reading));
+    if (isNaN(prev) || isNaN(curr)) continue;
+
+    if (curr < prev) {
+      // Mid-window meter reset / replacement handling: reading dropped sharply.
+      // Treat as reset (assume reset to 0) and compute consumption as curr alone.
+      totalConsumption += Math.max(0, curr);
+    } else {
+      totalConsumption += (curr - prev);
+    }
+  }
+
+  return totalConsumption;
+}
+
+export function consumptionKl(day: HistoryDay): number {
+  const opening = parseFloat(String(day.opening_reading ?? 0));
+  const closing = parseFloat(String(day.closing_reading ?? 0));
+  const rawConsumption = parseFloat(String(day.consumption ?? 0));
+
+  if (!isNaN(opening) && !isNaN(closing) && (day.opening_reading != null || day.closing_reading != null)) {
+    if (closing < opening) {
+      // Meter reset/replacement handling: closing_reading dropped below opening_reading
+      // Treat as a reset (assume reset to 0) and compute consumption as closing_reading alone
+      return Math.max(0, closing);
+    }
+    return Math.max(0, closing - opening);
+  }
+
+  return Math.max(0, isNaN(rawConsumption) ? 0 : rawConsumption);
 }
 
 async function fetchWithTimeout(url: string, token: string, timeoutMs = 8000): Promise<Response> {
@@ -447,7 +491,8 @@ export const getAdminDashboardStats = createServerFn({ method: "POST" })
         todaysUsageKl = t ? consumptionKl(t) : 0;
       }
     }
-    const latestMainHistory = mainHistory.at(-1);
+    const sortedMainHistory = mainHistory.slice().sort((a, b) => a.reading_date.localeCompare(b.reading_date));
+    const latestMainHistory = sortedMainHistory.at(-1);
     const totalUsageKl = mainLatest?.meter_reading != null
       ? Number(mainLatest.meter_reading)
       : Number(latestMainHistory?.closing_reading || 0);
