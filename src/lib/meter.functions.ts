@@ -155,32 +155,34 @@ export const getConsumerDashboardStats = createServerFn({ method: "POST" })
       withDeadline(sfLatest(device, token), null as LatestApi | null, 35000),
     ] as const);
 
-    const trend = rangeHistory
-      .slice()
-      .sort((a, b) => a.reading_date.localeCompare(b.reading_date))
-      .map((d) => ({ date: d.reading_date, consumption: Math.round(consumptionKl(d) * 1000) }));
+    // Single reset-/gap-aware series drives BOTH the trend and the totals,
+    // so they stay consistent (sum of trend === reported total).
+    const rangeSeries = dailyConsumptionSeries(rangeHistory);
 
-    const history = rangeHistory
-      .slice()
-      .sort((a, b) => a.reading_date.localeCompare(b.reading_date))
-      .map((d) => ({
-        date: d.reading_date,
-        opening: Math.round(Number(d.opening_reading || 0) * 1000),
-        closing: Math.round(Number(d.closing_reading || 0) * 1000),
-        consumption: Math.round(consumptionKl(d) * 1000),
-      }));
+    const trend = rangeSeries.map((d) => ({
+      date: d.date,
+      consumption: Math.round(d.consumption * 1000),
+    }));
 
-    const rangeConsumptionL = Math.round(rangeHistory.reduce((s, d) => s + consumptionKl(d), 0) * 1000);
-    const thisMonthL = Math.round(monthHistory.reduce((s, d) => s + consumptionKl(d), 0) * 1000);
-    const todayRow = monthHistory.find((d) => d.reading_date === todayStr)
-      ?? rangeHistory.find((d) => d.reading_date === todayStr);
-    const todaysUsageL = todayRow ? Math.round(consumptionKl(todayRow) * 1000) : 0;
-    const sortedMonthHistory = monthHistory.slice().sort((a, b) => a.reading_date.localeCompare(b.reading_date));
-    const sortedRangeHistory = rangeHistory.slice().sort((a, b) => a.reading_date.localeCompare(b.reading_date));
-    const latestClosing = sortedMonthHistory.at(-1)?.closing_reading ?? sortedRangeHistory.at(-1)?.closing_reading;
-    const totalUsageL = latest?.meter_reading != null
-      ? Math.round(Number(latest.meter_reading) * 1000)
-      : Math.round(Number(latestClosing || 0) * 1000);
+    const history = rangeSeries.map((d) => ({
+      date: d.date,
+      opening: Math.round(d.opening * 1000),
+      closing: Math.round(d.closing * 1000),
+      consumption: Math.round(d.consumption * 1000),
+    }));
+
+    const rangeConsumptionL = Math.round(sumDailyConsumption(rangeHistory) * 1000);
+    const thisMonthL = Math.round(sumDailyConsumption(monthHistory) * 1000);
+    const todaySeriesRow =
+      dailyConsumptionSeries(monthHistory).find((d) => d.date === todayStr)
+      ?? rangeSeries.find((d) => d.date === todayStr);
+    const todaysUsageL = todaySeriesRow ? Math.round(todaySeriesRow.consumption * 1000) : 0;
+    // Reset-aware lifetime usage — /latest alone undercounts after a meter reset.
+    // Dedupe the two history slices by date so a shared reset is not counted twice.
+    const combinedHistory = Array.from(
+      new Map([...rangeHistory, ...monthHistory].map((d) => [d.reading_date, d])).values(),
+    );
+    const totalUsageL = Math.round(cumulativeMeterKl(combinedHistory, latest) * 1000);
 
     return {
       device_id: device,
@@ -264,6 +266,15 @@ export type RawReading = {
   reading_datetime: string;
 };
 
+/**
+ * Higher-precision consumption from RAW readings (the /history/all endpoint).
+ *
+ * Optional / not wired into the dashboards: the daily /history path
+ * (dailyConsumptionSeries) is now reset- and gap-aware, so it is accurate
+ * enough for the dashboards. Keep this for cases that need exact,
+ * gap-free totals straight from the raw meter samples — pair it with a
+ * /history/all fetch. Covered by meter.functions.test.ts.
+ */
 export function computeRawReadingsConsumption(data: RawReading[]): number {
   if (!data || data.length < 2) return 0;
   // Explicitly sort array by reading_datetime ascending (oldest first)
@@ -304,6 +315,82 @@ export function consumptionKl(day: HistoryDay): number {
   }
 
   return Math.max(0, isNaN(rawConsumption) ? 0 : rawConsumption);
+}
+
+/**
+ * Build a chronological, reset- AND gap-aware per-day consumption series (kL).
+ *
+ * The Senseflow /history feed is NOT sorted, contains "0/0" filler rows, can
+ * contain meter resets (closing drops below opening — e.g. device swap), and
+ * can be missing whole days. This helper normalises all of that:
+ *  - sorts ascending by reading_date;
+ *  - per-day consumption via consumptionKl (reset-safe: a reset day yields ~0
+ *    instead of a large negative that would wreck any sum);
+ *  - recovers consumption hidden in DATA GAPS: when a day's opening jumps above
+ *    the previous real day's closing (missing days in between), that positive
+ *    jump is added to the day so no water is silently dropped.
+ * Deriving both the trend AND the totals from this one series guarantees they
+ * stay consistent (sum of the series === the reported total).
+ */
+export function dailyConsumptionSeries(
+  days: HistoryDay[],
+): Array<{ date: string; opening: number; closing: number; consumption: number }> {
+  const sorted = [...(days || [])].sort((a, b) =>
+    String(a.reading_date).localeCompare(String(b.reading_date)),
+  );
+  const out: Array<{ date: string; opening: number; closing: number; consumption: number }> = [];
+  let prevClosing: number | null = null;
+  for (const d of sorted) {
+    const o = parseFloat(String(d.opening_reading ?? 0));
+    const c = parseFloat(String(d.closing_reading ?? 0));
+    let kl = consumptionKl(d);
+    // Recover consumption that happened during missing days (opening jumped up).
+    // Skip reset boundaries and "0/0" filler rows (guarded by the >0 checks).
+    if (prevClosing != null && !isNaN(o) && o > prevClosing && prevClosing > 0 && o > 0) {
+      kl += o - prevClosing;
+    }
+    out.push({
+      date: d.reading_date,
+      opening: isNaN(o) ? 0 : o,
+      closing: isNaN(c) ? 0 : c,
+      consumption: kl,
+    });
+    // Only advance the running closing on "real" rows so gaps measure across fillers.
+    if (!(o === 0 && c === 0) && !isNaN(c)) prevClosing = c;
+  }
+  return out;
+}
+
+/** Total consumption over a set of daily rows (kL), reset- and gap-aware. */
+export function sumDailyConsumption(days: HistoryDay[]): number {
+  return dailyConsumptionSeries(days).reduce((s, d) => s + d.consumption, 0);
+}
+
+/**
+ * Reset-aware cumulative meter total (kL) — what "Total usage" should show.
+ *
+ * A hardware reset sends the live meter_reading back to ~0, so /latest alone
+ * UNDERCOUNTS lifetime usage after a reset. We add back the pre-reset peak
+ * (the reading captured just before each reset in the fetched history) to the
+ * current reading. NOTE: only resets inside the fetched history window can be
+ * accounted for; a reset before the window is not visible here.
+ */
+export function cumulativeMeterKl(days: HistoryDay[], latest: LatestApi | null): number {
+  const sorted = [...(days || [])].sort((a, b) =>
+    String(a.reading_date).localeCompare(String(b.reading_date)),
+  );
+  let preResetPeaks = 0;
+  for (const d of sorted) {
+    const o = parseFloat(String(d.opening_reading ?? 0));
+    const c = parseFloat(String(d.closing_reading ?? 0));
+    if (!isNaN(o) && !isNaN(c) && c < o) preResetPeaks += o;
+  }
+  const lastClosing = sorted.length
+    ? parseFloat(String(sorted[sorted.length - 1].closing_reading ?? 0))
+    : 0;
+  const current =
+    latest?.meter_reading != null ? Number(latest.meter_reading) : isNaN(lastClosing) ? 0 : lastClosing;
+  return (isNaN(current) ? 0 : current) + preResetPeaks;
 }
 
 async function fetchWithTimeout(url: string, token: string, timeoutMs = 8000): Promise<Response> {
@@ -474,51 +561,52 @@ export const getAdminDashboardStats = createServerFn({ method: "POST" })
       mapWithConcurrency(analyticsDevices, 5, (d) => sfHistory(d, startIso, endIso, token)),
     ] as const);
 
-    // Main meter overview (values in kilolitres -> convert to litres)
-    let todaysUsageKl = 0;
-    let thisMonthKl = 0;
-    for (const d of mainHistory) {
-      const c = consumptionKl(d);
-      if (d.reading_date === todayStr) todaysUsageKl += c;
-      if (d.reading_date.startsWith(monthPrefix)) thisMonthKl += c;
-    }
+    // Main meter overview (values in kilolitres -> convert to litres).
+    // Reset-/gap-aware series so a device swap or missing days do not skew totals.
+    let todaysUsageKl = dailyConsumptionSeries(mainHistory).find((d) => d.date === todayStr)?.consumption ?? 0;
+    let thisMonthKl = sumDailyConsumption(mainHistory.filter((d) => d.reading_date.startsWith(monthPrefix)));
     // For "This Month" we may need broader range than requested; fetch a month-wide slice if needed
     let monthFull = thisMonthKl;
     if (needsMonthWideHistory) {
-      monthFull = monthWideHistory.length ? monthWideHistory.reduce((s, r) => s + consumptionKl(r), 0) : monthFull;
+      monthFull = monthWideHistory.length ? sumDailyConsumption(monthWideHistory) : monthFull;
       if (!todaysUsageKl) {
-        const t = monthWideHistory.find((r) => r.reading_date === todayStr);
-        todaysUsageKl = t ? consumptionKl(t) : 0;
+        todaysUsageKl = dailyConsumptionSeries(monthWideHistory).find((d) => d.date === todayStr)?.consumption ?? 0;
       }
     }
     const sortedMainHistory = mainHistory.slice().sort((a, b) => a.reading_date.localeCompare(b.reading_date));
     const latestMainHistory = sortedMainHistory.at(-1);
-    const totalUsageKl = mainLatest?.meter_reading != null
-      ? Number(mainLatest.meter_reading)
-      : Number(latestMainHistory?.closing_reading || 0);
+    // Reset-aware lifetime usage across the widest main-meter history we fetched
+    // (deduped by date so a shared reset is not double-counted).
+    const mainCombined = Array.from(
+      new Map([...mainHistory, ...monthWideHistory].map((d) => [d.reading_date, d])).values(),
+    );
+    const totalUsageKl = cumulativeMeterKl(mainCombined, mainLatest);
     const flowRate = Number(mainLatest?.flow_rate || 0);
 
-    // Daily consumption trend (sum across analytics devices per day)
+    // Daily consumption trend (sum across analytics devices per day),
+    // reset-/gap-aware per device.
     const byDay = new Map<string, number>();
     for (const days of analyticsHistories) {
-      for (const d of days) {
-        byDay.set(d.reading_date, (byDay.get(d.reading_date) || 0) + consumptionKl(d));
+      for (const d of dailyConsumptionSeries(days)) {
+        byDay.set(d.date, (byDay.get(d.date) || 0) + d.consumption);
       }
     }
     const trend = Array.from(byDay.entries())
       .sort((a, b) => a[0].localeCompare(b[0]))
       .map(([date, kl]) => ({ date, consumption: Math.round(kl * 1000) }));
     const totalConsumptionL = Math.round(
-      analyticsHistories.reduce((s, days) => s + days.reduce((a, d) => a + consumptionKl(d), 0), 0) * 1000,
+      analyticsHistories.reduce((s, days) => s + sumDailyConsumption(days), 0) * 1000,
     );
 
-    // Leaderboard (top consumers in range)
+    // Leaderboard (top consumers in range). Look detail up BY DEVICE (not by index)
+    // so it can never desync from analyticsDevices if the filter changes later.
+    const detailByDevice = new Map(details.map((d) => [d.device_id, d]));
     const groupedByDevice = new Map<string, { device_id: string; total_l: number; detail: DashboardConsumer }>();
     analyticsDevices.forEach((dev, i) => {
-      const total = Math.round(analyticsHistories[i].reduce((a, d) => a + consumptionKl(d), 0) * 1000);
+      const total = Math.round(sumDailyConsumption(analyticsHistories[i]) * 1000);
       const existing = groupedByDevice.get(dev);
       if (existing) existing.total_l += total;
-      else groupedByDevice.set(dev, { device_id: dev, total_l: total, detail: details[i] });
+      else groupedByDevice.set(dev, { device_id: dev, total_l: total, detail: detailByDevice.get(dev)! });
     });
     const top = Array.from(groupedByDevice.values())
       .sort((a, b) => b.total_l - a.total_l)
@@ -614,18 +702,17 @@ export const getSecretaryDashboardStats = createServerFn({ method: "POST" })
     const devices = scoped.map((d) => d.device_id);
     const histories = await mapWithConcurrency(devices, 5, (dev) => sfHistory(dev, startIso, endIso, token));
 
-    // Per-consumer totals (liters)
+    // Per-consumer totals (liters), reset-/gap-aware
     const usageByConsumer: Record<string, number> = {};
     scoped.forEach((c, i) => {
-      const totalL = Math.round(histories[i].reduce((s, d) => s + consumptionKl(d), 0) * 1000);
-      usageByConsumer[c.user_id] = totalL;
+      usageByConsumer[c.user_id] = Math.round(sumDailyConsumption(histories[i]) * 1000);
     });
 
     // Daily trend
     const byDay = new Map<string, number>();
     for (const days of histories) {
-      for (const d of days) {
-        byDay.set(d.reading_date, (byDay.get(d.reading_date) || 0) + consumptionKl(d));
+      for (const d of dailyConsumptionSeries(days)) {
+        byDay.set(d.date, (byDay.get(d.date) || 0) + d.consumption);
       }
     }
     const trend = Array.from(byDay.entries())
@@ -633,7 +720,7 @@ export const getSecretaryDashboardStats = createServerFn({ method: "POST" })
       .map(([date, kl]) => ({ date, consumption: Math.round(kl * 1000) }));
 
     const totalUsageL = Math.round(
-      histories.reduce((s, days) => s + days.reduce((a, d) => a + consumptionKl(d), 0), 0) * 1000,
+      histories.reduce((s, days) => s + sumDailyConsumption(days), 0) * 1000,
     );
 
     return {

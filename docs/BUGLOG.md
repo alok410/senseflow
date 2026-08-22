@@ -1,5 +1,33 @@
 # Bug Log
 
+## [v1.0.19] – 2026-08-22 (18:30)
+
+### Fixed
+- Bug: "Total usage" undercounted badly after a hardware meter reset.
+  - Cause: `totalUsageL` (consumer) and `totalUsageKl` (admin main meter) read the live `/latest` `meter_reading`, which drops back to ~0 when a meter is reset/replaced. Verified on device USFL_WM0002: the meter reached 162.659 kL, reset to 0 on 2026-08-11, and `/latest` then reported only 7.843 kL, so lifetime showed 7,843 L instead of ~170,502 L.
+  - Fix: Added `cumulativeMeterKl(history, latest)` which adds each pre-reset peak (the reading just before a reset in the fetched history) back to the current reading. Rewired consumer + admin dashboards to use it. (Limitation: only resets inside the fetched history window are recoverable.)
+  - Files: src/lib/meter.functions.ts, src/routes/_authenticated/consumer/index.tsx
+
+- Bug: Consumption totals silently dropped water when the daily feed was missing days.
+  - Cause: Totals summed `consumptionKl` per day, but when the daily `/history` feed skips days the next day's `opening_reading` jumps above the previous `closing_reading`; that between-day usage was never counted (e.g. 0.676 kL lost across the 2026-07-26→29 gap on USFL_WM0002).
+  - Fix: Added `dailyConsumptionSeries(days)` (sorts, is reset-safe, and folds positive inter-day gaps into the day after) and `sumDailyConsumption(days)`. All dashboard totals, trends, per-consumer usage and the leaderboard now derive from this one series, so trend sums always equal the reported total.
+  - Files: src/lib/meter.functions.ts
+
+- Note: The negative-consumption clamp in `consumptionKl` is CORRECT and must stay.
+  - Earlier BUGLOG v1.0.12 said the clamp was removed "to match the reference dashboard." Real data disproves that: the 2026-08-11 reset day reports `consumption: -162.659`, and without the clamp the whole-range total collapses from 169,108 L to 6,449 L. The clamp (and the unit tests that enforce it) are the correct behaviour; v1.0.12's note was stale.
+
+- Bug: Consumer "Estimated bill" applied a full month's free tier to any selected date range.
+  - Cause: The range analysis card subtracted the whole monthly `free_tier_liters` regardless of range length, so the estimate swung with the date filter.
+  - Fix: Pro-rate the free tier by the selected range length (`rangeDays / daysInMonth`) and relabel the card as a range estimate; also fixed the per-day row highlight to compare against a per-day threshold (`free_tier / 30`) instead of the monthly allowance.
+  - Files: src/routes/_authenticated/consumer/index.tsx
+
+### Hardened
+- Admin leaderboard now looks each consumer's detail up BY device_id instead of by array index, so it can't desync from the analytics-device list.
+- `computeRawReadingsConsumption` (the raw `/history/all` path) is documented as an optional higher-precision helper; the daily path is now reset-/gap-aware, so it isn't required, but the function and its tests are kept.
+
+### Known / not changed
+- The authoritative invoice amount calculation (free_consumption, chargeable_consumption, amount, total_amount) is not in the app code — it lives outside these files (DB function / reference system) and was not verifiable here.
+
 ## [v1.0.18] – 2026-07-19 (17:00)
 
 ### Fixed

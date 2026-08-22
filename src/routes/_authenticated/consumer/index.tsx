@@ -105,18 +105,28 @@ function ConsumerDashboard() {
 
   const analysis = useMemo(() => {
     const rows = live.data?.history || [];
-    if (!rows.length) return { total: 0, avg: 0, min: 0, max: 0, count: 0, chargeable: 0, bill: 0 };
+    if (!rows.length) return { total: 0, avg: 0, min: 0, max: 0, count: 0, chargeable: 0, bill: 0, proratedFree: 0 };
     const c = rows.map((r) => Number(r.consumption || 0));
     const total = c.reduce((a, b) => a + b, 0);
     const free = meta.data?.freeTier || 0;
     const rate = meta.data?.ratePerLiter || 0;
-    const chargeable = Math.max(0, total - free);
+    // The free tier is a MONTHLY allowance. Pro-rate it to the selected range so
+    // a 7-day view doesn't get a whole month's free water (and a 90-day view
+    // isn't limited to one). This card is an ESTIMATE — the real bill comes from
+    // the invoice generator, not from this range view.
+    const rangeDays = Math.max(
+      1,
+      Math.round((new Date(end).getTime() - new Date(start).getTime()) / 86_400_000) + 1,
+    );
+    const daysInMonth = new Date(new Date(end).getFullYear(), new Date(end).getMonth() + 1, 0).getDate();
+    const proratedFree = free * Math.min(1, rangeDays / daysInMonth);
+    const chargeable = Math.max(0, total - proratedFree);
     return {
       total, avg: Math.round(total / c.length),
       min: Math.min(...c), max: Math.max(...c),
-      count: c.length, chargeable, bill: chargeable * rate,
+      count: c.length, chargeable, bill: chargeable * rate, proratedFree: Math.round(proratedFree),
     };
-  }, [live.data, meta.data]);
+  }, [live.data, meta.data, start, end]);
 
   const chartData = (live.data?.trend || []).map((r) => ({
     date: r.date,
@@ -266,11 +276,12 @@ function ConsumerDashboard() {
             <div className="rounded-lg border bg-muted/40 p-4">
               <p className="text-xs text-muted-foreground">Chargeable</p>
               <p className="text-2xl font-bold">{analysis.chargeable.toLocaleString("en-IN")} L</p>
-              <p className="text-xs text-muted-foreground">After {(s?.freeTier || 0).toLocaleString("en-IN")}L free</p>
+              <p className="text-xs text-muted-foreground">After {analysis.proratedFree.toLocaleString("en-IN")}L free (pro-rated)</p>
             </div>
             <div className="rounded-lg border bg-success/5 p-4">
-              <p className="text-xs text-muted-foreground">Estimated bill</p>
+              <p className="text-xs text-muted-foreground">Estimated bill (range)</p>
               <p className="text-2xl font-bold">₹{analysis.bill.toFixed(2)}</p>
+              <p className="text-xs text-muted-foreground">Estimate — final bill from invoice</p>
             </div>
           </div>
 
@@ -293,7 +304,7 @@ function ConsumerDashboard() {
                     <TableCell className="font-medium">{Number(r.closing).toLocaleString("en-IN")}</TableCell>
                     <TableCell className="text-muted-foreground">{Number(r.opening).toLocaleString("en-IN")}</TableCell>
                     <TableCell>
-                      <Badge variant="outline" className={Number(r.consumption) > (s?.freeTier || Infinity) ? "border-warning text-warning" : ""}>
+                      <Badge variant="outline" className={s?.freeTier ? (Number(r.consumption) > s.freeTier / 30 ? "border-warning text-warning" : "") : ""}>
                         {Number(r.consumption).toLocaleString("en-IN")} L
                       </Badge>
                     </TableCell>
