@@ -3,7 +3,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { subDays, format } from "date-fns";
-import { Users, UserCheck, Droplets, Activity, BarChart3 } from "lucide-react";
+import { Users, UserCheck, Droplets, Activity, BarChart3, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { StatsCard } from "@/components/StatsCard";
@@ -185,6 +185,57 @@ function AdminDashboard() {
   const leaders = s?.leaders || [];
   const fmtL = (n: number) => `${n.toLocaleString("en-IN")} L`;
 
+  type LeaderboardSortKey = "rank" | "device_id" | "name" | "consumption";
+  const [sortKey, setSortKey] = useState<LeaderboardSortKey>("rank");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+
+  const toggleSort = (key: LeaderboardSortKey) => {
+    if (sortKey === key) {
+      setSortDir((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir(key === "consumption" ? "desc" : "asc");
+    }
+  };
+
+  const sortedLeaders = useMemo(() => {
+    const list = leaders.map((l, index) => ({
+      ...l,
+      rank: index + 1,
+    }));
+    const dir = sortDir === "asc" ? 1 : -1;
+    return list.sort((a, b) => {
+      let valA: string | number = "";
+      let valB: string | number = "";
+      switch (sortKey) {
+        case "rank":
+          valA = a.rank;
+          valB = b.rank;
+          break;
+        case "device_id":
+          valA = (a.device_id || "").toLowerCase();
+          valB = (b.device_id || "").toLowerCase();
+          break;
+        case "name":
+          valA = (a.name || "").toLowerCase();
+          valB = (b.name || "").toLowerCase();
+          break;
+        case "consumption":
+          valA = a.consumption;
+          valB = b.consumption;
+          break;
+      }
+      if (valA < valB) return -1 * dir;
+      if (valA > valB) return 1 * dir;
+      return 0;
+    });
+  }, [leaders, sortKey, sortDir]);
+
+  const renderSortIcon = (key: LeaderboardSortKey) => {
+    if (sortKey !== key) return <ArrowUpDown className="h-3 w-3 opacity-50" />;
+    return sortDir === "asc" ? <ArrowUp className="h-3 w-3 text-primary" /> : <ArrowDown className="h-3 w-3 text-primary" />;
+  };
+
   return (
     <DashboardLayout
       navItems={ADMIN_NAV}
@@ -303,21 +354,50 @@ function AdminDashboard() {
         <Card className="mt-4">
           <CardHeader><CardTitle>Leaderboard</CardTitle></CardHeader>
           <CardContent className="p-0">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
-                <tr><th className="px-4 py-3">#</th><th className="px-4 py-3">Consumer</th><th className="px-4 py-3">Consumption</th><th className="px-4 py-3 text-right"></th></tr>
-              </thead>
-              <tbody className="divide-y">
-                {leaders.map((l, i) => (
-                  <tr key={l.id}>
-                    <td className="px-4 py-2 text-muted-foreground">{i + 1}</td>
-                    <td className="px-4 py-2 font-medium">{l.name}</td>
-                    <td className="px-4 py-2">{l.consumption.toLocaleString("en-IN")} L</td>
-                    <td className="px-4 py-2 text-right"><Link to="/admin/consumers/$id" params={{ id: l.id }}><Button size="sm" variant="ghost">View</Button></Link></td>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
+                  <tr>
+                    <th className="px-4 py-3">
+                      <button className="flex items-center gap-1 hover:text-foreground font-medium" onClick={() => toggleSort("rank")}>
+                        # {renderSortIcon("rank")}
+                      </button>
+                    </th>
+                    <th className="px-4 py-3">
+                      <button className="flex items-center gap-1 hover:text-foreground font-medium" onClick={() => toggleSort("device_id")}>
+                        Device ID {renderSortIcon("device_id")}
+                      </button>
+                    </th>
+                    <th className="px-4 py-3">
+                      <button className="flex items-center gap-1 hover:text-foreground font-medium" onClick={() => toggleSort("name")}>
+                        Consumer {renderSortIcon("name")}
+                      </button>
+                    </th>
+                    <th className="px-4 py-3">
+                      <button className="flex items-center gap-1 hover:text-foreground font-medium" onClick={() => toggleSort("consumption")}>
+                        Consumption {renderSortIcon("consumption")}
+                      </button>
+                    </th>
+                    <th className="px-4 py-3 text-right"></th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y">
+                  {sortedLeaders.map((l) => (
+                    <tr key={`${l.id}-${l.device_id}`}>
+                      <td className="px-4 py-2 text-muted-foreground">{l.rank}</td>
+                      <td className="px-4 py-2 font-mono text-xs text-muted-foreground">{l.device_id || "—"}</td>
+                      <td className="px-4 py-2 font-medium">{l.name}</td>
+                      <td className="px-4 py-2">{l.consumption.toLocaleString("en-IN")} L</td>
+                      <td className="px-4 py-2 text-right">
+                        <Link to="/admin/consumers/$id" params={{ id: l.id }}>
+                          <Button size="sm" variant="ghost">View</Button>
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </CardContent>
         </Card>
       )}
