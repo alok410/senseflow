@@ -9,14 +9,29 @@ const optionalEmail = z.string().trim().email().max(255).optional().or(z.literal
 // Auth is temporarily disabled.
 
 // Ensure a phone number isn't already used by a DIFFERENT account (checks both
-// the primary and the secondary number columns).
+// the primary and the secondary number columns). Falls back to primary-only if
+// the phone_secondary column hasn't been migrated yet.
 async function assertPhoneFree(supabaseAdmin: any, phone: string, exceptUserId?: string) {
-  const { data } = await supabaseAdmin
+  let res = await supabaseAdmin
     .from("profiles")
     .select("id")
     .or(`phone.eq.${phone},phone_secondary.eq.${phone}`);
-  const clash = (data || []).some((r: any) => r.id !== exceptUserId);
+  if (res.error && /phone_secondary/i.test(res.error.message || "")) {
+    res = await supabaseAdmin.from("profiles").select("id").eq("phone", phone);
+  }
+  const clash = (res.data || []).some((r: any) => r.id !== exceptUserId);
   if (clash) throw new Error(`Phone ${phone} is already used by another account.`);
+}
+
+// Update a profile, retrying without phone_secondary if that column isn't
+// migrated yet (so single-number accounts still save before the migration).
+async function updateProfileTolerant(supabaseAdmin: any, id: string, patch: Record<string, unknown>) {
+  let res = await supabaseAdmin.from("profiles").update(patch).eq("id", id);
+  if (res.error && /phone_secondary/i.test(res.error.message || "") && "phone_secondary" in patch) {
+    const { phone_secondary, ...rest } = patch;
+    res = await supabaseAdmin.from("profiles").update(rest).eq("id", id);
+  }
+  if (res.error) throw new Error(res.error.message);
 }
 
 const createUserInput = z.object({
@@ -53,16 +68,12 @@ export const createUser = createServerFn({ method: "POST" })
     if (createErr || !created?.user) throw new Error(createErr?.message || "Failed to create user");
     const newId = created.user.id;
 
-    const { error: upErr } = await supabaseAdmin
-      .from("profiles")
-      .update({
-        full_name: data.fullName,
-        phone: data.phone,
-        phone_secondary: data.phoneSecondary ?? null,
-        email: data.email ?? null,
-      })
-      .eq("id", newId);
-    if (upErr) throw new Error(upErr.message);
+    await updateProfileTolerant(supabaseAdmin, newId, {
+      full_name: data.fullName,
+      phone: data.phone,
+      phone_secondary: data.phoneSecondary ?? null,
+      email: data.email ?? null,
+    });
 
     await supabaseAdmin.from("user_roles").delete().eq("user_id", newId);
     const rows = data.roles.map((role) => ({ user_id: newId, role }));
@@ -109,9 +120,13 @@ export const updateUser = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-    const { data: current, error: curErr } = await supabaseAdmin
+    let curRes = await supabaseAdmin
       .from("profiles").select("phone, phone_secondary").eq("id", data.userId).maybeSingle();
-    if (curErr) throw new Error(curErr.message);
+    if (curRes.error && /phone_secondary/i.test(curRes.error.message || "")) {
+      curRes = await supabaseAdmin.from("profiles").select("phone").eq("id", data.userId).maybeSingle();
+    }
+    if (curRes.error) throw new Error(curRes.error.message);
+    const current = curRes.data;
     if (!current) throw new Error("Account not found.");
 
     const nextPrimary = data.phone ?? current.phone;
@@ -131,8 +146,7 @@ export const updateUser = createServerFn({ method: "POST" })
     else if (data.phoneSecondary !== undefined) patch.phone_secondary = data.phoneSecondary;
 
     if (Object.keys(patch).length) {
-      const { error } = await supabaseAdmin.from("profiles").update(patch as any).eq("id", data.userId);
-      if (error) throw new Error(error.message);
+      await updateProfileTolerant(supabaseAdmin, data.userId, patch);
     }
 
     if (data.roles) {

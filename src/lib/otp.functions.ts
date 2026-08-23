@@ -72,16 +72,26 @@ async function sendOtpSms(phone: string, name: string, code: string) {
 }
 
 // Look up a profile by EITHER the primary or the secondary phone number.
+// Falls back to primary-only if the phone_secondary column hasn't been migrated
+// yet, so login keeps working before the migration is applied.
 async function findProfileByPhone(supabaseAdmin: any, phone: string) {
-  const { data, error } = await supabaseAdmin
+  let res = await supabaseAdmin
     .from("profiles")
     .select("id, full_name, phone, phone_secondary, is_active")
     .or(`phone.eq.${phone},phone_secondary.eq.${phone}`)
     .limit(1)
     .maybeSingle();
-  if (error) throw new Error(error.message);
-  return data as
-    | { id: string; full_name: string | null; phone: string | null; phone_secondary: string | null; is_active: boolean | null }
+  if (res.error && /phone_secondary/i.test(res.error.message || "")) {
+    res = await supabaseAdmin
+      .from("profiles")
+      .select("id, full_name, phone, is_active")
+      .eq("phone", phone)
+      .limit(1)
+      .maybeSingle();
+  }
+  if (res.error) throw new Error(res.error.message);
+  return res.data as
+    | { id: string; full_name: string | null; phone: string | null; phone_secondary?: string | null; is_active: boolean | null }
     | null;
 }
 

@@ -62,11 +62,18 @@ function AdminUsers() {
   const list = useQuery({
     queryKey: ["admin-users"],
     queryFn: async () => {
-      const { data: profiles, error } = await supabase
+      let res = await supabase
         .from("profiles")
         .select("id, full_name, phone, phone_secondary, email, is_active, created_at")
         .order("created_at", { ascending: false });
-      if (error) throw error;
+      if (res.error && /phone_secondary/i.test(res.error.message || "")) {
+        res = await supabase
+          .from("profiles")
+          .select("id, full_name, phone, email, is_active, created_at")
+          .order("created_at", { ascending: false });
+      }
+      if (res.error) throw res.error;
+      const profiles = res.data;
       const ids = (profiles || []).map((p) => p.id);
       const { data: roles, error: rolesError } = ids.length
         ? await supabase.from("user_roles").select("user_id, role").in("user_id", ids)
