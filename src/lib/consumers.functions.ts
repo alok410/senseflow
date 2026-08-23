@@ -251,13 +251,25 @@ export const getAdminConsumersList = createServerFn({ method: "POST" })
   .handler(async () => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-    let { data: roles } = await supabaseAdmin.from("user_roles").select("user_id").eq("role", "consumer");
-    let ids = (roles || []).map((r: any) => r.user_id);
+    const getPureConsumerIds = (rolesData: any[]) => {
+      const roleMap = new Map<string, Set<string>>();
+      (rolesData || []).forEach((r: any) => {
+        const set = roleMap.get(r.user_id) || new Set();
+        set.add(r.role);
+        roleMap.set(r.user_id, set);
+      });
+      return Array.from(roleMap.entries())
+        .filter(([_, set]) => set.has("consumer") && !set.has("admin") && !set.has("secretary"))
+        .map(([uid]) => uid);
+    };
+
+    let { data: roles } = await supabaseAdmin.from("user_roles").select("user_id, role");
+    let ids = getPureConsumerIds(roles || []);
 
     if (!ids.length) {
       await seedDemoConsumersHandler(supabaseAdmin, null);
-      const refetch = await supabaseAdmin.from("user_roles").select("user_id").eq("role", "consumer");
-      ids = (refetch.data || []).map((r: any) => r.user_id);
+      const refetch = await supabaseAdmin.from("user_roles").select("user_id, role");
+      ids = getPureConsumerIds(refetch.data || []);
     }
 
     if (!ids.length) return [];
