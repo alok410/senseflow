@@ -53,7 +53,7 @@ function AdminUsers() {
     phone: string;
     email: string;
     roles: AppRole[];
-  }>({ fullName: "", phone: "", email: "", roles: ["consumer"] });
+  }>({ fullName: "", phone: "", email: "", roles: ["secretary"] });
 
   const list = useQuery({
     queryKey: ["admin-users"],
@@ -86,7 +86,7 @@ function AdminUsers() {
     onSuccess: () => {
       toast.success("User created.");
       setCreateOpen(false);
-      setForm({ fullName: "", phone: "", email: "", roles: ["consumer"] });
+      setForm({ fullName: "", phone: "", email: "", roles: ["secretary"] });
       qc.invalidateQueries({ queryKey: ["admin-users"] });
     },
     onError: (err: unknown) => toast.error(err instanceof Error ? err.message : "Failed"),
@@ -118,10 +118,20 @@ function AdminUsers() {
   const toggleRole = (roles: AppRole[], r: AppRole): AppRole[] =>
     roles.includes(r) ? roles.filter((x) => x !== r) : [...roles, r];
 
+  // Consumers are managed on the dedicated Admin → Consumers page, so this page
+  // shows only staff (admins/secretaries) and users with no role yet. A user who
+  // is both staff and consumer still appears here because of their staff role.
+  const staffUsers = (list.data || []).filter((u) => {
+    const roles = (u.user_roles || []).map((r) => r.role);
+    const isStaff = roles.includes("admin") || roles.includes("secretary");
+    const isConsumer = roles.includes("consumer");
+    return isStaff || !isConsumer;
+  });
+
   return (
     <DashboardLayout
       navItems={ADMIN_NAV}
-      title="All users"
+      title="Staff users"
       userName={profile?.full_name || null}
       userPhone={profile?.phone || null}
     >
@@ -219,7 +229,7 @@ function AdminUsers() {
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {(list.data || []).map((u) => {
+                {staffUsers.map((u) => {
                   const roles = (u.user_roles || []).map((r) => r.role);
                   return (
                     <tr key={u.id}>
@@ -274,10 +284,10 @@ function AdminUsers() {
                     </tr>
                   );
                 })}
-                {!list.data?.length && (
+                {!staffUsers.length && (
                   <tr>
                     <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
-                      No users yet.
+                      No staff users yet.
                     </td>
                   </tr>
                 )}

@@ -34,8 +34,8 @@ function AdminDashboard() {
   const { user } = useSession();
   const { data: profile } = useMyProfile(user);
   const getLiveStats = useServerFn(getAdminDashboardStats);
-  const [preset, setPreset] = useState<7 | 15 | 30 | 0>(7);
-  const [start, setStart] = useState<string>(format(subDays(new Date(), 7), "yyyy-MM-dd"));
+  const [preset, setPreset] = useState<7 | 15 | 30 | 0>(30);
+  const [start, setStart] = useState<string>(format(subDays(new Date(), 30), "yyyy-MM-dd"));
   const [end, setEnd] = useState<string>(format(new Date(), "yyyy-MM-dd"));
   const [locId, setLocId] = useState<string>(ALL);
   const [userId, setUserId] = useState<string>(ALL);
