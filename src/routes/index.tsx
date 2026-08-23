@@ -1,8 +1,10 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useEffect } from "react";
 import { Droplets, BarChart3, Users, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GradientWave } from "@/components/ui/gradient-wave";
 import { AppFooter } from "@/components/AppFooter";
+import { useSession } from "@/hooks/use-session";
 
 export const Route = createFileRoute("/")({
   component: Landing,
@@ -12,6 +14,13 @@ type Role = "admin" | "secretary" | "consumer";
 
 function Landing() {
   const navigate = useNavigate();
+  const { session, loading } = useSession();
+
+  useEffect(() => {
+    if (!loading && session) {
+      navigate({ to: "/dashboard", replace: true });
+    }
+  }, [session, loading, navigate]);
 
   // Auth ON: choosing a role sends the user to OTP sign-in with that role
   // preselected. They only reach the dashboard after verifying their number.

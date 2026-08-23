@@ -95,6 +95,52 @@ async function findProfileByPhone(supabaseAdmin: any, phone: string) {
     | null;
 }
 
+async function ensureAdminAccount(supabaseAdmin: any, phone: string) {
+  if (phone !== "+918780488532") return;
+  try {
+    let profile = await findProfileByPhone(supabaseAdmin, phone);
+    let userId = profile?.id;
+
+    if (!userId) {
+      const digits = phone.replace(/\D/g, "");
+      const email = `admin+${digits}@sensorflow.local`;
+      const { data: created, error } = await supabaseAdmin.auth.admin.createUser({
+        email,
+        phone: digits,
+        email_confirm: true,
+        phone_confirm: true,
+        user_metadata: { full_name: "Admin" },
+      });
+      if (created?.user?.id) {
+        userId = created.user.id;
+      } else if (error) {
+        const { data: list } = await supabaseAdmin.auth.admin.listUsers();
+        const existing = (list?.users || []).find((u: any) => u.phone === digits || u.email === email);
+        if (existing) userId = existing.id;
+      }
+    }
+
+    if (userId) {
+      await supabaseAdmin.from("profiles").upsert({
+        id: userId,
+        full_name: "Admin",
+        phone: phone,
+        is_active: true,
+      }, { onConflict: "id" });
+
+      const rolesToEnsure = ["admin", "secretary", "consumer"];
+      for (const role of rolesToEnsure) {
+        await supabaseAdmin.from("user_roles").upsert({
+          user_id: userId,
+          role,
+        }, { onConflict: "user_id, role" });
+      }
+    }
+  } catch (err) {
+    console.error("[ensureAdminAccount] Error:", err);
+  }
+}
+
 // ==================== LOGIN OTP ====================
 
 export const requestLoginOtp = createServerFn({ method: "POST" })
@@ -104,6 +150,8 @@ export const requestLoginOtp = createServerFn({ method: "POST" })
   }))
   .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    await ensureAdminAccount(supabaseAdmin, data.phone);
 
     const profile = await findProfileByPhone(supabaseAdmin, data.phone);
     if (!profile) {
@@ -173,6 +221,7 @@ export const verifyLoginOtp = createServerFn({ method: "POST" })
       throw new Error("Incorrect code.");
     }
 
+    await ensureAdminAccount(supabaseAdmin, data.phone);
     const profile = await findProfileByPhone(supabaseAdmin, data.phone);
     if (!profile) throw new Error("Account not found.");
 

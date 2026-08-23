@@ -58,8 +58,12 @@ function AuthPage() {
   }, []);
 
   const normalizePhone = (raw: string) => {
-    const trimmed = raw.trim().replace(/\s+/g, "");
-    return trimmed.startsWith("+") ? trimmed : `+${trimmed.replace(/^0+/, "")}`;
+    let clean = raw.trim().replace(/[^\d+]/g, "");
+    if (!clean) return "";
+    if (clean.startsWith("+")) return clean;
+    if (clean.length === 10) return `+91${clean}`;
+    if (clean.length === 12 && clean.startsWith("91")) return `+${clean}`;
+    return `+${clean.replace(/^0+/, "")}`;
   };
 
   const sendOtp = async (e: React.FormEvent) => {
