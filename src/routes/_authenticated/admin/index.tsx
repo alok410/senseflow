@@ -15,6 +15,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useSession, useMyProfile } from "@/hooks/use-session";
 import { ADMIN_NAV } from "@/lib/nav";
 import { getAdminDashboardStats } from "@/lib/meter.functions";
+import { seedDemoConsumers } from "@/lib/consumers.functions";
 
 export const Route = createFileRoute("/_authenticated/admin/")({
   component: AdminDashboard,
@@ -61,9 +62,14 @@ function AdminDashboard() {
   const consumers = useQuery({
     queryKey: ["admin-dashboard-consumers"],
     queryFn: async () => {
-      const { data: roles, error: roleError } = await supabase.from("user_roles").select("user_id").eq("role", "consumer");
+      let { data: roles, error: roleError } = await supabase.from("user_roles").select("user_id").eq("role", "consumer");
       if (roleError) throw roleError;
-      const ids = (roles || []).map((r) => r.user_id);
+      let ids = (roles || []).map((r) => r.user_id);
+      if (!ids.length) {
+        await seedDemoConsumers({ data: {} }).catch(() => null);
+        const refetch = await supabase.from("user_roles").select("user_id").eq("role", "consumer");
+        ids = (refetch.data || []).map((r) => r.user_id);
+      }
       if (!ids.length) return [] as DashboardConsumerRow[];
       const [{ data: profiles, error: profileError }, { data: details, error: detailsError }] = await Promise.all([
         supabase.from("profiles").select("id, full_name, phone, is_active").in("id", ids),

@@ -170,31 +170,60 @@ export const seedDemoConsumers = createServerFn({ method: "POST" })
     }
 
     let created = 0, skipped = 0;
+    const { data: list } = await supabaseAdmin.auth.admin.listUsers().catch(() => ({ data: { users: [] } }));
+    const existingUsers = list?.users || [];
+
     for (let i = 0; i < DEMO_CONSUMERS.length; i++) {
       const c = DEMO_CONSUMERS[i];
       const phone = `+9190000${String(i + 1).padStart(5, "0")}`;
       const digits = phone.replace(/\D/g, "");
 
-      const { data: dupPhone } = await supabaseAdmin
-        .from("profiles").select("id").eq("phone", phone).maybeSingle();
-      const { data: dupEmail } = await supabaseAdmin
-        .from("profiles").select("id").eq("email", c.email).maybeSingle();
-      if (dupPhone || dupEmail) { skipped++; continue; }
+      let uid: string | null = null;
 
-      const { data: u, error: uerr } = await supabaseAdmin.auth.admin.createUser({
+      const { data: existingProf } = await supabaseAdmin
+        .from("profiles")
+        .select("id")
+        .or(`phone.eq.${phone},email.eq.${c.email}`)
+        .maybeSingle();
+
+      if (existingProf?.id) {
+        uid = existingProf.id;
+      } else {
+        const foundAuth = existingUsers.find(
+          (u: any) => u.email === c.email || u.phone === digits || (u.phone && u.phone.endsWith(digits))
+        );
+        if (foundAuth?.id) {
+          uid = foundAuth.id;
+        } else {
+          const { data: u } = await supabaseAdmin.auth.admin.createUser({
+            email: c.email,
+            phone: digits,
+            email_confirm: true,
+            phone_confirm: true,
+            user_metadata: { full_name: c.name },
+          }).catch(() => ({ data: null }));
+          if (u?.user?.id) uid = u.user.id;
+        }
+      }
+
+      if (!uid) {
+        skipped++;
+        continue;
+      }
+
+      await supabaseAdmin.from("profiles").upsert({
+        id: uid,
+        full_name: c.name,
+        phone,
         email: c.email,
-        phone: digits,
-        email_confirm: true,
-        phone_confirm: true,
-        user_metadata: { full_name: c.name },
-      });
-      if (uerr || !u?.user) { skipped++; continue; }
-      const uid = u.user.id;
+        is_active: true,
+      }, { onConflict: "id" });
 
-      await supabaseAdmin.from("profiles")
-        .update({ full_name: c.name, phone, email: c.email }).eq("id", uid);
-      await supabaseAdmin.from("user_roles").delete().eq("user_id", uid);
-      await supabaseAdmin.from("user_roles").insert({ user_id: uid, role: "consumer" });
+      await supabaseAdmin.from("user_roles").upsert({
+        user_id: uid,
+        role: "consumer",
+      }, { onConflict: "user_id, role" });
+
       await supabaseAdmin.from("consumer_details").upsert({
         user_id: uid,
         device_id: c.meter,
@@ -204,6 +233,7 @@ export const seedDemoConsumers = createServerFn({ method: "POST" })
         location_id: locationId,
         connection_date: new Date().toISOString().slice(0, 10),
       }, { onConflict: "user_id" });
+
       created++;
     }
     return { created, skipped, total: DEMO_CONSUMERS.length };

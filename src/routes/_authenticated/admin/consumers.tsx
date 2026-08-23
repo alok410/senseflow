@@ -69,9 +69,14 @@ function AdminConsumersList() {
   const list = useQuery({
     queryKey: ["admin-consumers"],
     queryFn: async () => {
-      const { data: roles, error: rolesError } = await supabase.from("user_roles").select("user_id").eq("role", "consumer");
+      let { data: roles, error: rolesError } = await supabase.from("user_roles").select("user_id").eq("role", "consumer");
       if (rolesError) throw rolesError;
-      const ids = (roles || []).map((r) => r.user_id);
+      let ids = (roles || []).map((r) => r.user_id);
+      if (!ids.length) {
+        await seedDemoConsumers({ data: {} }).catch(() => null);
+        const refetch = await supabase.from("user_roles").select("user_id").eq("role", "consumer");
+        ids = (refetch.data || []).map((r) => r.user_id);
+      }
       if (!ids.length) return [] as Row[];
       const [{ data: profiles, error }, { data: details, error: detailsError }] = await Promise.all([
         supabase
