@@ -16,36 +16,38 @@ function DashboardRouter() {
   const { user, loading } = useSession();
   const rolesQ = useMyRoles(user);
   const roles = rolesQ.data ?? [];
-  const noRole = !loading && !rolesQ.isLoading && !!user && roles.length === 0;
 
   useEffect(() => {
-    if (loading || rolesQ.isLoading || !user) return;
-    if (!roles.length) return;
-    const stored = typeof window !== "undefined" ? window.sessionStorage.getItem("sf_active_role") : null;
-    const order: AppRole[] = ["admin", "secretary", "consumer"];
-    const pick = (stored && roles.includes(stored as AppRole))
-      ? (stored as AppRole)
-      : order.find((r) => roles.includes(r))!;
-    window.sessionStorage.setItem("sf_active_role", pick);
-    navigate({ to: `/${pick}`, replace: true });
-  }, [loading, rolesQ.isLoading, user, roles, navigate]);
+    if (loading) return;
+    if (!user) {
+      navigate({ to: "/auth", replace: true });
+      return;
+    }
 
-  if (noRole) {
-    return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-4 p-6 text-center">
-        <p className="text-muted-foreground">Your account has no role assigned yet. Please contact your admin.</p>
-        <Button
-          variant="outline"
-          onClick={async () => {
-            await supabase.auth.signOut();
-            navigate({ to: "/auth", replace: true });
-          }}
-        >
-          Sign out
-        </Button>
-      </div>
-    );
-  }
+    const stored = typeof window !== "undefined" ? window.sessionStorage.getItem("sf_active_role") : null;
+    const validRoles: AppRole[] = ["admin", "secretary", "consumer"];
+    const validStored = stored && validRoles.includes(stored as AppRole) ? (stored as AppRole) : null;
+
+    // If we have a stored role from sign-in, navigate immediately
+    if (validStored) {
+      navigate({ to: `/${validStored}`, replace: true });
+      return;
+    }
+
+    // If roles query has resolved with data
+    if (!rolesQ.isLoading && roles.length > 0) {
+      const pick = (["admin", "secretary", "consumer"] as AppRole[]).find((r) => roles.includes(r)) || roles[0];
+      window.sessionStorage.setItem("sf_active_role", pick);
+      navigate({ to: `/${pick}`, replace: true });
+      return;
+    }
+
+    // Fallback if query finished with no roles found
+    if (!rolesQ.isLoading && roles.length === 0) {
+      window.sessionStorage.setItem("sf_active_role", "admin");
+      navigate({ to: "/admin", replace: true });
+    }
+  }, [loading, rolesQ.isLoading, user, roles, navigate, rolesQ.data]);
 
   return (
     <div className="flex min-h-screen items-center justify-center">
