@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { Droplets, BarChart3, Users, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GradientWave } from "@/components/ui/gradient-wave";
+import { AppFooter } from "@/components/AppFooter";
 
 export const Route = createFileRoute("/")({
   component: Landing,
@@ -29,7 +30,7 @@ function Landing() {
   ];
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-background">
+    <div className="relative flex min-h-screen flex-col overflow-hidden bg-background">
       <GradientWave className="opacity-70" />
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-background/40 via-background/60 to-background" />
       <header className="relative z-10 border-b border-white/20 bg-background/40 backdrop-blur-xl">
@@ -41,7 +42,7 @@ function Landing() {
         </div>
       </header>
 
-      <main className="relative z-10 container mx-auto px-4 py-16 md:py-24">
+      <main className="relative z-10 container mx-auto w-full flex-1 px-4 py-16 md:py-24">
         <div className="mx-auto max-w-3xl text-center">
           <h1 className="text-4xl font-bold tracking-tight md:text-6xl">
             Smart water meter management,
@@ -67,6 +68,8 @@ function Landing() {
           ))}
         </div>
       </main>
+
+      <AppFooter />
     </div>
   );
 }

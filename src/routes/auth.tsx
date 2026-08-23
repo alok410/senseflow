@@ -17,6 +17,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useSession } from "@/hooks/use-session";
 import { requestLoginOtp, verifyLoginOtp } from "@/lib/otp.functions";
 import { GradientWave } from "@/components/ui/gradient-wave";
+import { AppFooter } from "@/components/AppFooter";
 
 type Role = "admin" | "secretary" | "consumer";
 
@@ -196,6 +197,10 @@ function AuthPage() {
             )}
           </CardContent>
         </Card>
+      </div>
+
+      <div className="absolute inset-x-0 bottom-0 z-10">
+        <AppFooter />
       </div>
     </div>
   );
