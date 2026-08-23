@@ -198,6 +198,70 @@ export const getConsumerDashboardStats = createServerFn({ method: "POST" })
     };
   });
 
+// ---- Main meter dashboard (live Senseflow, device USFL_FL7053) ----
+// Same usage analysis shape as the consumer dashboard, but for the fixed main
+// meter device (no consumer account, so no invoices / billing).
+export const getMainMeterDashboardStats = createServerFn({ method: "POST" })
+  .inputValidator((d: unknown) => z.object({
+    start: z.string(), // yyyy-mm-dd
+    end: z.string(),   // yyyy-mm-dd
+  }).parse(d))
+  .handler(async ({ data }) => {
+    const token = process.env.SENSEFLOW_API_TOKEN;
+    if (!token) throw new Error("SENSEFLOW_API_TOKEN not configured");
+
+    const device = MAIN_METER_DEVICE;
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const monthPrefix = todayStr.slice(0, 7);
+    const startIso = `${data.start}T00:00:00Z`;
+    const endIso = `${data.end}T23:59:59Z`;
+    const monthStartIso = `${monthPrefix}-01T00:00:00Z`;
+    const monthEndIso = `${todayStr}T23:59:59Z`;
+
+    const [rangeHistory, monthHistory, latest] = await Promise.all([
+      withDeadline(sfHistory(device, startIso, endIso, token), [] as HistoryDay[], 35000),
+      withDeadline(sfHistory(device, monthStartIso, monthEndIso, token), [] as HistoryDay[], 35000),
+      withDeadline(sfLatest(device, token), null as LatestApi | null, 35000),
+    ] as const);
+
+    const rangeSeries = dailyConsumptionSeries(rangeHistory);
+    const trend = rangeSeries.map((d) => ({
+      date: d.date,
+      consumption: Math.round(d.consumption * 1000),
+    }));
+    const history = rangeSeries.map((d) => ({
+      date: d.date,
+      opening: Math.round(d.opening * 1000),
+      closing: Math.round(d.closing * 1000),
+      consumption: Math.round(d.consumption * 1000),
+    }));
+
+    const rangeConsumptionL = Math.round(sumDailyConsumption(rangeHistory) * 1000);
+    const thisMonthL = Math.round(sumDailyConsumption(monthHistory) * 1000);
+    const todaySeriesRow =
+      dailyConsumptionSeries(monthHistory).find((d) => d.date === todayStr)
+      ?? rangeSeries.find((d) => d.date === todayStr);
+    const todaysUsageL = todaySeriesRow ? Math.round(todaySeriesRow.consumption * 1000) : 0;
+    const combinedHistory = Array.from(
+      new Map([...rangeHistory, ...monthHistory].map((d) => [d.reading_date, d])).values(),
+    );
+    const totalUsageL = Math.round(cumulativeMeterKl(combinedHistory, latest) * 1000);
+    const flowRate = Number(latest?.flow_rate || 0);
+
+    return {
+      device_id: device,
+      serial_number: latest?.serial_number ?? null,
+      latest,
+      flowRate,
+      totalUsageL,
+      todaysUsageL,
+      thisMonthL,
+      rangeConsumptionL,
+      trend,
+      history,
+    };
+  });
+
 // ---- Dashboard aggregation from live Senseflow API ----
 
 type LatestApi = {

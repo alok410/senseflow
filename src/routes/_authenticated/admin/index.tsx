@@ -34,7 +34,7 @@ function AdminDashboard() {
   const { user } = useSession();
   const { data: profile } = useMyProfile(user);
   const getLiveStats = useServerFn(getAdminDashboardStats);
-  const [preset, setPreset] = useState<7 | 15 | 30 | 0>(30);
+  const [preset, setPreset] = useState<0 | 1 | 7 | 15 | 30>(30);
   const [start, setStart] = useState<string>(format(subDays(new Date(), 30), "yyyy-MM-dd"));
   const [end, setEnd] = useState<string>(format(new Date(), "yyyy-MM-dd"));
   const [locId, setLocId] = useState<string>(ALL);
@@ -45,6 +45,12 @@ function AdminDashboard() {
     setPreset(d);
     setStart(format(subDays(new Date(), d), "yyyy-MM-dd"));
     setEnd(format(new Date(), "yyyy-MM-dd"));
+  };
+  const setToday = () => {
+    setPreset(1);
+    const t = format(new Date(), "yyyy-MM-dd");
+    setStart(t);
+    setEnd(t);
   };
 
   const locs = useQuery({
@@ -243,13 +249,16 @@ function AdminDashboard() {
       userName={profile?.full_name || null}
       userPhone={profile?.phone || null}
     >
-      {/* Main Meter Overview */}
-      <Card className="border-primary/20">
+      {/* Main Meter Overview — click to open the full main-meter dashboard */}
+      <Link to="/admin/main-meter" className="block">
+      <Card className="cursor-pointer border-primary/20 transition-all hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-lg">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Activity className="h-5 w-5 text-primary" /> Main Meter Overview
           </CardTitle>
-          <p className="text-sm text-muted-foreground">Live values from Senseflow (USFL_FL7053)</p>
+          <p className="text-sm text-muted-foreground">
+            Live values from Senseflow (USFL_FL7053) · <span className="text-primary">Open full dashboard →</span>
+          </p>
         </CardHeader>
         <CardContent>
           <div className="grid gap-3 sm:grid-cols-3">
@@ -268,6 +277,7 @@ function AdminDashboard() {
           </div>
         </CardContent>
       </Card>
+      </Link>
 
       <div className="mt-6">
         <h2 className="text-xl font-bold">Water Analytics Overview</h2>
@@ -275,6 +285,7 @@ function AdminDashboard() {
       </div>
 
       <div className="mt-8 flex flex-wrap items-center gap-2">
+        <Button size="sm" variant={preset === 1 ? "default" : "outline"} onClick={setToday}>Today</Button>
         {([7, 15, 30] as const).map((d) => (
           <Button key={d} size="sm" variant={preset === d ? "default" : "outline"} onClick={() => setRange(d)}>Last {d} days</Button>
         ))}
