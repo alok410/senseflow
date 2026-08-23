@@ -10,19 +10,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
-import { Loader2, Plus, Pencil, Trash2 } from "lucide-react";
+import { Loader2, Plus, Pencil, Trash2, ShieldCheck } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useSession, useMyProfile, type AppRole } from "@/hooks/use-session";
-import { createUser, setUserRoles } from "@/lib/admin.functions";
+import { createUser, updateUser } from "@/lib/admin.functions";
 import { deleteConsumer } from "@/lib/consumers.functions";
+import {
+  adminStartNumberChange, adminVerifyOldSendNew, adminConfirmNewNumber,
+} from "@/lib/otp.functions";
 import { ADMIN_NAV } from "@/lib/nav";
 
 export const Route = createFileRoute("/_authenticated/admin/users")({
@@ -35,6 +32,7 @@ type UserRow = {
   id: string;
   full_name: string | null;
   phone: string | null;
+  phone_secondary: string | null;
   email: string | null;
   is_active: boolean;
   created_at: string;
@@ -46,21 +44,27 @@ function AdminUsers() {
   const { data: profile } = useMyProfile(user);
   const qc = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
+  const [form, setForm] = useState({
+    fullName: "", phone: "", phoneSecondary: "", email: "", roles: ["secretary"] as AppRole[],
+  });
+
+  // Edit
   const [editing, setEditing] = useState<UserRow | null>(null);
-  const [editRoles, setEditRoles] = useState<AppRole[]>([]);
-  const [form, setForm] = useState<{
-    fullName: string;
-    phone: string;
-    email: string;
-    roles: AppRole[];
-  }>({ fullName: "", phone: "", email: "", roles: ["secretary"] });
+  const [editForm, setEditForm] = useState({ fullName: "", phone: "", phoneSecondary: "", roles: [] as AppRole[] });
+
+  // Secure number change (admin accounts)
+  const [secure, setSecure] = useState<UserRow | null>(null);
+  const [secureStep, setSecureStep] = useState<"start" | "old" | "new">("start");
+  const [secureNew, setSecureNew] = useState("");
+  const [secureCode, setSecureCode] = useState("");
+  const [sentTo, setSentTo] = useState("");
 
   const list = useQuery({
     queryKey: ["admin-users"],
     queryFn: async () => {
       const { data: profiles, error } = await supabase
         .from("profiles")
-        .select("id, full_name, phone, email, is_active, created_at")
+        .select("id, full_name, phone, phone_secondary, email, is_active, created_at")
         .order("created_at", { ascending: false });
       if (error) throw error;
       const ids = (profiles || []).map((p) => p.id);
@@ -70,35 +74,48 @@ function AdminUsers() {
       if (rolesError) throw rolesError;
       const roleMap = new Map<string, { role: AppRole }[]>();
       (roles || []).forEach((r) => {
-        const list = roleMap.get(r.user_id) || [];
-        list.push({ role: r.role as AppRole });
-        roleMap.set(r.user_id, list);
+        const arr = roleMap.get(r.user_id) || [];
+        arr.push({ role: r.role as AppRole });
+        roleMap.set(r.user_id, arr);
       });
-      return (profiles || []).map((p) => ({
-        ...p,
-        user_roles: roleMap.get(p.id) || [],
-      })) as UserRow[];
+      return (profiles || []).map((p) => ({ ...p, user_roles: roleMap.get(p.id) || [] })) as UserRow[];
     },
   });
 
   const createMut = useMutation({
-    mutationFn: async () => createUser({ data: form }),
+    mutationFn: async () => createUser({ data: {
+      fullName: form.fullName,
+      phone: form.phone,
+      phoneSecondary: form.phoneSecondary || undefined,
+      email: form.email || undefined,
+      roles: form.roles,
+    } }),
     onSuccess: () => {
       toast.success("User created.");
       setCreateOpen(false);
-      setForm({ fullName: "", phone: "", email: "", roles: ["secretary"] });
+      setForm({ fullName: "", phone: "", phoneSecondary: "", email: "", roles: ["secretary"] });
       qc.invalidateQueries({ queryKey: ["admin-users"] });
     },
     onError: (err: unknown) => toast.error(err instanceof Error ? err.message : "Failed"),
   });
 
-  const rolesMut = useMutation({
+  const editIsAdmin = !!editing?.user_roles?.some((r) => r.role === "admin");
+
+  const editMut = useMutation({
     mutationFn: async () => {
       if (!editing) throw new Error("No user");
-      return setUserRoles({ data: { userId: editing.id, roles: editRoles } });
+      return updateUser({ data: {
+        userId: editing.id,
+        fullName: editForm.fullName,
+        // Admin primary number must go through the secure OTP flow — omit it here.
+        phone: editIsAdmin ? undefined : (editForm.phone || undefined),
+        phoneSecondary: editForm.phoneSecondary || undefined,
+        clearSecondary: !editForm.phoneSecondary,
+        roles: editForm.roles.length ? editForm.roles : undefined,
+      } });
     },
     onSuccess: () => {
-      toast.success("Roles updated.");
+      toast.success("Saved.");
       setEditing(null);
       qc.invalidateQueries({ queryKey: ["admin-users"] });
     },
@@ -115,12 +132,58 @@ function AdminUsers() {
     onError: (err: unknown) => toast.error(err instanceof Error ? err.message : "Failed"),
   });
 
+  // Secure number-change mutations
+  const startMut = useMutation({
+    mutationFn: async () => {
+      if (!secure) throw new Error("No user");
+      return adminStartNumberChange({ data: { userId: secure.id, newPhone: secureNew } });
+    },
+    onSuccess: (r) => { setSentTo(r.sentTo); setSecureStep("old"); setSecureCode(""); toast.success(`OTP sent to current number ${r.sentTo}`); },
+    onError: (err: unknown) => toast.error(err instanceof Error ? err.message : "Failed"),
+  });
+  const verifyOldMut = useMutation({
+    mutationFn: async () => {
+      if (!secure) throw new Error("No user");
+      return adminVerifyOldSendNew({ data: { userId: secure.id, code: secureCode } });
+    },
+    onSuccess: (r) => { setSentTo(r.sentTo); setSecureStep("new"); setSecureCode(""); toast.success(`OTP sent to new number ${r.sentTo}`); },
+    onError: (err: unknown) => toast.error(err instanceof Error ? err.message : "Failed"),
+  });
+  const confirmNewMut = useMutation({
+    mutationFn: async () => {
+      if (!secure) throw new Error("No user");
+      return adminConfirmNewNumber({ data: { userId: secure.id, code: secureCode } });
+    },
+    onSuccess: () => {
+      toast.success("Number updated.");
+      setSecure(null); setSecureStep("start"); setSecureNew(""); setSecureCode("");
+      qc.invalidateQueries({ queryKey: ["admin-users"] });
+    },
+    onError: (err: unknown) => toast.error(err instanceof Error ? err.message : "Failed"),
+  });
+
   const toggleRole = (roles: AppRole[], r: AppRole): AppRole[] =>
     roles.includes(r) ? roles.filter((x) => x !== r) : [...roles, r];
 
-  // Consumers are managed on the dedicated Admin → Consumers page, so this page
-  // shows only staff (admins/secretaries) and users with no role yet. A user who
-  // is both staff and consumer still appears here because of their staff role.
+  const openEdit = (u: UserRow) => {
+    setEditing(u);
+    setEditForm({
+      fullName: u.full_name || "",
+      phone: u.phone || "",
+      phoneSecondary: u.phone_secondary || "",
+      roles: (u.user_roles || []).map((r) => r.role),
+    });
+  };
+
+  const openSecure = (u: UserRow) => {
+    setSecure(u);
+    setSecureStep("start");
+    setSecureNew("");
+    setSecureCode("");
+    setSentTo("");
+  };
+
+  // Consumers are managed on Admin → Consumers; show staff (+ unassigned) only.
   const staffUsers = (list.data || []).filter((u) => {
     const roles = (u.user_roles || []).map((r) => r.role);
     const isStaff = roles.includes("admin") || roles.includes("secretary");
@@ -138,67 +201,45 @@ function AdminUsers() {
       <div className="mb-4 flex justify-end">
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
           <DialogTrigger asChild>
-            <Button>
-              <Plus className="mr-2 h-4 w-4" /> Add user
-            </Button>
+            <Button><Plus className="mr-2 h-4 w-4" /> Add user</Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Create user</DialogTitle>
               <DialogDescription>
-                Users sign in with their mobile number and a one-time code. Pick one or more roles.
+                Users sign in with their mobile number and a one-time code — no self sign-up. Pick one or more roles.
               </DialogDescription>
             </DialogHeader>
             <form
               className="space-y-4"
               onSubmit={(e) => {
                 e.preventDefault();
-                if (!form.roles.length) {
-                  toast.error("Pick at least one role.");
-                  return;
-                }
+                if (!form.roles.length) { toast.error("Pick at least one role."); return; }
                 createMut.mutate();
               }}
             >
               <div className="space-y-2">
                 <Label htmlFor="fullName">Full name</Label>
-                <Input
-                  id="fullName"
-                  value={form.fullName}
-                  onChange={(e) => setForm({ ...form, fullName: e.target.value })}
-                  required
-                />
+                <Input id="fullName" value={form.fullName} onChange={(e) => setForm({ ...form, fullName: e.target.value })} required />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="phone">Phone (international format)</Label>
-                <Input
-                  id="phone"
-                  placeholder="+919876543210"
-                  value={form.phone}
-                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                  required
-                />
+                <Label htmlFor="phone">Phone (login number)</Label>
+                <Input id="phone" placeholder="+919876543210" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} required />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="phone2">Second number (optional — also logs in)</Label>
+                <Input id="phone2" placeholder="+918780488532" value={form.phoneSecondary} onChange={(e) => setForm({ ...form, phoneSecondary: e.target.value })} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="email">Email (optional)</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={form.email}
-                  onChange={(e) => setForm({ ...form, email: e.target.value })}
-                />
+                <Input id="email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
               </div>
               <div className="space-y-2">
                 <Label>Roles</Label>
                 <div className="space-y-2 rounded-md border p-3">
                   {ALL_ROLES.map((r) => (
                     <label key={r} className="flex items-center gap-2 text-sm capitalize">
-                      <Checkbox
-                        checked={form.roles.includes(r)}
-                        onCheckedChange={() =>
-                          setForm({ ...form, roles: toggleRole(form.roles, r) })
-                        }
-                      />
+                      <Checkbox checked={form.roles.includes(r)} onCheckedChange={() => setForm({ ...form, roles: toggleRole(form.roles, r) })} />
                       {r}
                     </label>
                   ))}
@@ -222,7 +263,7 @@ function AdminUsers() {
               <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
                 <tr>
                   <th className="px-4 py-3">Name</th>
-                  <th className="px-4 py-3">Phone</th>
+                  <th className="px-4 py-3">Numbers</th>
                   <th className="px-4 py-3">Roles</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3 text-right">Actions</th>
@@ -231,42 +272,32 @@ function AdminUsers() {
               <tbody className="divide-y">
                 {staffUsers.map((u) => {
                   const roles = (u.user_roles || []).map((r) => r.role);
+                  const isAdmin = roles.includes("admin");
                   return (
                     <tr key={u.id}>
                       <td className="px-4 py-3 font-medium">{u.full_name || "—"}</td>
                       <td className="px-4 py-3 text-muted-foreground">
-                        {u.phone || u.email || "—"}
+                        <div>{u.phone || u.email || "—"}</div>
+                        {u.phone_secondary && <div className="text-xs">2nd: {u.phone_secondary}</div>}
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap gap-1">
-                          {roles.length ? (
-                            roles.map((r) => (
-                              <Badge key={r} variant="outline" className="capitalize">
-                                {r}
-                              </Badge>
-                            ))
-                          ) : (
-                            <span className="text-xs text-muted-foreground">none</span>
-                          )}
+                          {roles.length
+                            ? roles.map((r) => <Badge key={r} variant="outline" className="capitalize">{r}</Badge>)
+                            : <span className="text-xs text-muted-foreground">none</span>}
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        {u.is_active ? (
-                          <Badge>Active</Badge>
-                        ) : (
-                          <Badge variant="secondary">Inactive</Badge>
-                        )}
+                        {u.is_active ? <Badge>Active</Badge> : <Badge variant="secondary">Inactive</Badge>}
                       </td>
-                      <td className="px-4 py-3 text-right">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => {
-                            setEditing(u);
-                            setEditRoles(roles.length ? roles : ["consumer"]);
-                          }}
-                        >
-                          <Pencil className="mr-1 h-3.5 w-3.5" /> Roles
+                      <td className="px-4 py-3 text-right whitespace-nowrap">
+                        {isAdmin && (
+                          <Button size="sm" variant="ghost" title="Secure number change (OTP)" onClick={() => openSecure(u)}>
+                            <ShieldCheck className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                        <Button size="sm" variant="ghost" onClick={() => openEdit(u)}>
+                          <Pencil className="mr-1 h-3.5 w-3.5" /> Edit
                         </Button>
                         <Button
                           size="sm"
@@ -285,11 +316,7 @@ function AdminUsers() {
                   );
                 })}
                 {!staffUsers.length && (
-                  <tr>
-                    <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
-                      No staff users yet.
-                    </td>
-                  </tr>
+                  <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">No staff users yet.</td></tr>
                 )}
               </tbody>
             </table>
@@ -297,40 +324,120 @@ function AdminUsers() {
         </CardContent>
       </Card>
 
+      {/* Edit account */}
       <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Manage roles</DialogTitle>
+            <DialogTitle>Edit account</DialogTitle>
+            <DialogDescription>{editing?.full_name || editing?.phone}</DialogDescription>
+          </DialogHeader>
+          {editing && (
+            <form
+              className="space-y-4"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!editForm.roles.length) { toast.error("Pick at least one role."); return; }
+                editMut.mutate();
+              }}
+            >
+              <div className="space-y-2">
+                <Label>Full name</Label>
+                <Input value={editForm.fullName} onChange={(e) => setEditForm({ ...editForm, fullName: e.target.value })} required />
+              </div>
+              <div className="space-y-2">
+                <Label>Primary number (login)</Label>
+                <Input
+                  value={editForm.phone}
+                  disabled={editIsAdmin}
+                  onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                  placeholder="+919876543210"
+                />
+                {editIsAdmin && (
+                  <p className="text-xs text-muted-foreground">
+                    Admin numbers change through the secure OTP flow — close this and use the <ShieldCheck className="inline h-3 w-3" /> button.
+                  </p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label>Second number (optional — also logs in)</Label>
+                <Input value={editForm.phoneSecondary} onChange={(e) => setEditForm({ ...editForm, phoneSecondary: e.target.value })} placeholder="+918780488532" />
+              </div>
+              <div className="space-y-2">
+                <Label>Roles</Label>
+                <div className="space-y-2 rounded-md border p-3">
+                  {ALL_ROLES.map((r) => (
+                    <label key={r} className="flex items-center gap-2 text-sm capitalize">
+                      <Checkbox checked={editForm.roles.includes(r)} onCheckedChange={() => setEditForm({ ...editForm, roles: toggleRole(editForm.roles, r) })} />
+                      {r}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <DialogFooter>
+                <Button type="submit" disabled={editMut.isPending}>
+                  {editMut.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Save
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Secure number change (admin): OTP to old number, then OTP to new number */}
+      <Dialog open={!!secure} onOpenChange={(o) => { if (!o) { setSecure(null); setSecureStep("start"); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><ShieldCheck className="h-5 w-5 text-primary" /> Secure number change</DialogTitle>
             <DialogDescription>
-              {editing?.full_name || editing?.phone} — pick one or more roles this user can sign in as.
+              {secure?.full_name || secure?.phone} — verify the current number, then the new number.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-2 rounded-md border p-3">
-            {ALL_ROLES.map((r) => (
-              <label key={r} className="flex items-center gap-2 text-sm capitalize">
-                <Checkbox
-                  checked={editRoles.includes(r)}
-                  onCheckedChange={() => setEditRoles(toggleRole(editRoles, r))}
-                />
-                {r}
-              </label>
-            ))}
-          </div>
-          <DialogFooter>
-            <Button
-              onClick={() => {
-                if (!editRoles.length) {
-                  toast.error("Pick at least one role.");
-                  return;
-                }
-                rolesMut.mutate();
-              }}
-              disabled={rolesMut.isPending}
-            >
-              {rolesMut.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Save
-            </Button>
-          </DialogFooter>
+
+          {secureStep === "start" && (
+            <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); startMut.mutate(); }}>
+              <div className="rounded-md border p-3 text-sm">
+                <div className="text-xs text-muted-foreground">Current number</div>
+                <div className="font-medium">{secure?.phone || "—"}</div>
+              </div>
+              <div className="space-y-2">
+                <Label>New number</Label>
+                <Input value={secureNew} onChange={(e) => setSecureNew(e.target.value)} placeholder="+919999999999" required />
+              </div>
+              <DialogFooter>
+                <Button type="submit" disabled={startMut.isPending || !secureNew}>
+                  {startMut.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Send OTP to current number
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
+
+          {secureStep === "old" && (
+            <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); verifyOldMut.mutate(); }}>
+              <p className="text-sm text-muted-foreground">Enter the 6-digit code sent to the current number ({sentTo}).</p>
+              <Input value={secureCode} onChange={(e) => setSecureCode(e.target.value)} inputMode="numeric" maxLength={6} placeholder="______" />
+              <DialogFooter>
+                <Button type="submit" disabled={verifyOldMut.isPending || secureCode.length !== 6}>
+                  {verifyOldMut.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Verify & send OTP to new number
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
+
+          {secureStep === "new" && (
+            <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); confirmNewMut.mutate(); }}>
+              <p className="text-sm text-muted-foreground">Enter the 6-digit code sent to the new number ({sentTo}).</p>
+              <Input value={secureCode} onChange={(e) => setSecureCode(e.target.value)} inputMode="numeric" maxLength={6} placeholder="______" />
+              <DialogFooter>
+                <Button type="submit" disabled={confirmNewMut.isPending || secureCode.length !== 6}>
+                  {confirmNewMut.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Confirm new number
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
         </DialogContent>
       </Dialog>
     </DashboardLayout>
