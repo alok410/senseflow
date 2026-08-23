@@ -7,15 +7,6 @@ export type AppRole = "admin" | "secretary" | "consumer";
 
 const ACTIVE_ROLE_KEY = "sf_active_role";
 
-// TESTING: With auth disabled, bind the "consumer" role to DHARTI (Block 3, USFL_WM0013).
-const TEST_CONSUMER_ID = "846b96ef-8525-413f-a8ac-720b93569214";
-const TEST_ADMIN_ID = "00000000-0000-0000-0000-000000000000"; // placeholder; admin pages don't rely on user.id
-const TEST_SECRETARY_ID = "50dfaff9-6177-4437-b5b0-d404e7ce5264"; // Demo Secretary
-
-function stubUser(id: string): User {
-  return { id, app_metadata: {}, user_metadata: {}, aud: "authenticated", created_at: new Date().toISOString() } as User;
-}
-
 export function useSession() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
@@ -31,15 +22,8 @@ export function useSession() {
     return () => sub.subscription.unsubscribe();
   }, []);
 
-  // Auth is temporarily disabled. Fall back to a stub user based on the
-  // active role so dashboards can bind to a real database identity for testing.
-  let user: User | null = session?.user ?? null;
-  if (!user) {
-    const role = readStoredRole();
-    if (role === "consumer") user = stubUser(TEST_CONSUMER_ID);
-    else if (role === "secretary") user = stubUser(TEST_SECRETARY_ID);
-    else if (role === "admin") user = stubUser(TEST_ADMIN_ID);
-  }
+  // Auth ON: identity comes only from a real Supabase session (OTP login).
+  const user: User | null = session?.user ?? null;
   return { session, user, loading };
 }
 

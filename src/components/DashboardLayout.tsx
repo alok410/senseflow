@@ -1,6 +1,6 @@
 import { type ReactNode, useState } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { Droplets, Menu, X, UserCog, Home } from "lucide-react";
+import { Droplets, Menu, X, UserCog, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -15,7 +15,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
-import { useActiveRole, type AppRole } from "@/hooks/use-session";
+import { useActiveRole, useSession, useMyRoles, type AppRole } from "@/hooks/use-session";
+import { supabase } from "@/integrations/supabase/client";
 import { GradientWave } from "@/components/ui/gradient-wave";
 import { AppFooter } from "@/components/AppFooter";
 
@@ -37,9 +38,10 @@ export function DashboardLayout({ children, navItems, title, userName, userPhone
   const qc = useQueryClient();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [mobileOpen, setMobileOpen] = useState(false);
-  // Auth is off — expose all roles in the switcher so anyone can hop between dashboards.
-  const allRoles: AppRole[] = ["admin", "secretary", "consumer"];
-  const { activeRole, setActiveRole } = useActiveRole(allRoles);
+  // Auth ON — the switcher only offers the roles this signed-in account actually has.
+  const { user } = useSession();
+  const myRoles = useMyRoles(user).data ?? [];
+  const { activeRole, setActiveRole } = useActiveRole(myRoles);
 
   const initials = (userName || userPhone || "U")
     .split(" ")
@@ -48,13 +50,15 @@ export function DashboardLayout({ children, navItems, title, userName, userPhone
     .toUpperCase()
     .slice(0, 2);
 
-  const goHome = async () => {
+  const signOut = async () => {
     await qc.cancelQueries();
+    await supabase.auth.signOut();
     qc.clear();
     if (typeof window !== "undefined") {
       window.sessionStorage.removeItem("sf_active_role");
+      window.sessionStorage.removeItem("sf_login_role");
     }
-    navigate({ to: "/", replace: true });
+    navigate({ to: "/auth", replace: true });
   };
 
   const switchRole = (r: AppRole) => {
@@ -114,7 +118,7 @@ export function DashboardLayout({ children, navItems, title, userName, userPhone
                   )}
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                {activeRole && (
+                {activeRole && myRoles.length > 1 && (
                   <>
                     <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
                       <UserCog className="mr-2 inline h-3.5 w-3.5" />
@@ -124,7 +128,7 @@ export function DashboardLayout({ children, navItems, title, userName, userPhone
                       value={activeRole}
                       onValueChange={(v) => switchRole(v as AppRole)}
                     >
-                      {allRoles.map((r) => (
+                      {myRoles.map((r) => (
                         <DropdownMenuRadioItem key={r} value={r} className="capitalize">
                           {r}
                         </DropdownMenuRadioItem>
@@ -133,9 +137,9 @@ export function DashboardLayout({ children, navItems, title, userName, userPhone
                     <DropdownMenuSeparator />
                   </>
                 )}
-                <DropdownMenuItem onClick={goHome}>
-                  <Home className="mr-2 h-4 w-4" />
-                  Back to home
+                <DropdownMenuItem onClick={signOut}>
+                  <LogOut className="mr-2 h-4 w-4" />
+                  Sign out
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

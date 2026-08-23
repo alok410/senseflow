@@ -13,14 +13,13 @@ type Role = "admin" | "secretary" | "consumer";
 function Landing() {
   const navigate = useNavigate();
 
-  // Auth is temporarily disabled. Users pick a role and jump straight in.
+  // Auth ON: choosing a role sends the user to OTP sign-in with that role
+  // preselected. They only reach the dashboard after verifying their number.
   const enter = (role: Role) => {
     if (typeof window !== "undefined") {
-      window.sessionStorage.setItem("sf_active_role", role);
+      window.sessionStorage.setItem("sf_login_role", role);
     }
-    if (role === "admin") navigate({ to: "/admin" });
-    else if (role === "secretary") navigate({ to: "/secretary" });
-    else navigate({ to: "/consumer" });
+    navigate({ to: "/auth" });
   };
 
   const cards: { role: Role; icon: typeof Shield; title: string; desc: string }[] = [
@@ -49,7 +48,7 @@ function Landing() {
             <span className="text-primary"> made simple.</span>
           </h1>
           <p className="mt-6 text-lg text-foreground/70">
-            Choose a role below to open its dashboard.
+            Choose a role and sign in with your mobile number.
           </p>
         </div>
 
@@ -63,7 +62,7 @@ function Landing() {
               <f.icon className="h-8 w-8 text-primary" />
               <h3 className="mt-4 text-lg font-semibold">{f.title}</h3>
               <p className="mt-2 text-sm text-muted-foreground">{f.desc}</p>
-              <Button className="mt-4" size="sm">Open {f.title}</Button>
+              <Button className="mt-4" size="sm">Sign in as {f.title}</Button>
             </button>
           ))}
         </div>

@@ -36,7 +36,11 @@ function AuthPage() {
   const { session } = useSession();
   const [step, setStep] = useState<"phone" | "otp">("phone");
   const [phone, setPhone] = useState("");
-  const [role, setRole] = useState<Role>("consumer");
+  const [role, setRole] = useState<Role>(() => {
+    if (typeof window === "undefined") return "consumer";
+    const r = window.sessionStorage.getItem("sf_login_role");
+    return r === "admin" || r === "secretary" || r === "consumer" ? r : "consumer";
+  });
   const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
 
