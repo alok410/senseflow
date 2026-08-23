@@ -8,7 +8,7 @@ import {
   TrendingUp, BarChart3, Clock, Droplets, CreditCard,
 } from "lucide-react";
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { StatsCard } from "@/components/StatsCard";
@@ -195,13 +195,13 @@ function ConsumerDashboard() {
           <CardContent className="h-64">
             {chartData.length ? (
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={chartData}>
+                <BarChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="label" fontSize={10} />
                   <YAxis fontSize={10} domain={[0, "auto"]} />
                   <Tooltip />
-                  <Line type="monotone" dataKey="consumption" stroke="hsl(var(--primary))" strokeWidth={2} />
-                </LineChart>
+                  <Bar dataKey="consumption" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                </BarChart>
               </ResponsiveContainer>
             ) : <p className="text-sm text-muted-foreground">No consumption data.</p>}
           </CardContent>

@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { subDays, format } from "date-fns";
 import { Users, UserCheck, Droplets, Activity, BarChart3, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
-import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { StatsCard } from "@/components/StatsCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -318,13 +318,13 @@ function AdminDashboard() {
           <CardContent className="h-72">
             {trend.length ? (
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={trend}>
+                <BarChart data={trend}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="date" fontSize={10} />
                   <YAxis fontSize={10} domain={[0, "auto"]} />
                   <Tooltip />
-                  <Line type="monotone" dataKey="consumption" stroke="hsl(var(--primary))" />
-                </LineChart>
+                  <Bar dataKey="consumption" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                </BarChart>
               </ResponsiveContainer>
             ) : <p className="text-sm text-muted-foreground">{liveStats.isLoading || localReadings.isLoading ? "Loading readings…" : "No consumption in range."}</p>}
           </CardContent>

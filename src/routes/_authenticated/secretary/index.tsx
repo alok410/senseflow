@@ -7,7 +7,7 @@ import {
   Users, Droplets, TrendingUp, FileText, IndianRupee, BarChart3, Plus, Wallet,
 } from "lucide-react";
 import {
-  BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, LabelList,
 } from "recharts";
 import { DashboardLayout } from "@/components/DashboardLayout";
@@ -278,13 +278,13 @@ function SecretaryDashboard() {
                 <div className="flex h-full items-center justify-center text-muted-foreground">Loading…</div>
               ) : byDay.length ? (
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={byDay}>
+                  <BarChart data={byDay}>
                     <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
                     <XAxis dataKey="date" fontSize={11} />
                     <YAxis fontSize={11} domain={[0, "auto"]} />
                     <Tooltip />
-                    <Line type="monotone" dataKey="consumption" stroke="hsl(var(--primary))" strokeWidth={2} />
-                  </LineChart>
+                    <Bar dataKey="consumption" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                  </BarChart>
                 </ResponsiveContainer>
               ) : (
                 <div className="flex h-full items-center justify-center text-muted-foreground">No data in range.</div>
