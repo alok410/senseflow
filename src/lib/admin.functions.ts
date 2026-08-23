@@ -158,3 +158,74 @@ export const updateUser = createServerFn({ method: "POST" })
 
     return { ok: true };
   });
+
+export const getAdminUsersList = createServerFn({ method: "POST" })
+  .handler(async () => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    // 1. Ensure primary admin account exists
+    const adminPhone = "+918780488532";
+    let { data: adminProf } = await supabaseAdmin.from("profiles").select("id").eq("phone", adminPhone).maybeSingle();
+    let adminId = adminProf?.id;
+
+    if (!adminId) {
+      const { data: list } = await supabaseAdmin.auth.admin.listUsers().catch(() => ({ data: { users: [] } }));
+      const found = (list?.users || []).find((u: any) => u.phone === "918780488532" || (u.phone && u.phone.endsWith("8780488532")) || u.email?.includes("8780488532"));
+      if (found?.id) {
+        adminId = found.id;
+      } else {
+        const { data: created } = await supabaseAdmin.auth.admin.createUser({
+          email: "admin+918780488532@sensorflow.local",
+          phone: "918780488532",
+          email_confirm: true,
+          phone_confirm: true,
+          user_metadata: { full_name: "Admin" },
+        }).catch(() => ({ data: null }));
+        if (created?.user?.id) adminId = created.user.id;
+      }
+    }
+
+    if (adminId) {
+      await supabaseAdmin.from("profiles").upsert({
+        id: adminId,
+        full_name: "Admin",
+        phone: adminPhone,
+        is_active: true,
+      }, { onConflict: "id" });
+
+      await supabaseAdmin.from("user_roles").upsert({
+        user_id: adminId,
+        role: "admin",
+      }, { onConflict: "user_id, role" });
+    }
+
+    // 2. Fetch profiles
+    let res = await supabaseAdmin
+      .from("profiles")
+      .select("id, full_name, phone, phone_secondary, email, is_active, created_at")
+      .order("created_at", { ascending: false });
+    if (res.error && /phone_secondary/i.test(res.error.message || "")) {
+      res = await supabaseAdmin
+        .from("profiles")
+        .select("id, full_name, phone, email, is_active, created_at")
+        .order("created_at", { ascending: false });
+    }
+    const profiles = res.data || [];
+    const ids = profiles.map((p: any) => p.id);
+
+    const { data: roles } = ids.length
+      ? await supabaseAdmin.from("user_roles").select("user_id, role").in("user_id", ids)
+      : { data: [] };
+
+    const roleMap = new Map<string, { role: string }[]>();
+    (roles || []).forEach((r: any) => {
+      const arr = roleMap.get(r.user_id) || [];
+      arr.push({ role: r.role });
+      roleMap.set(r.user_id, arr);
+    });
+
+    return profiles.map((p: any) => ({
+      ...p,
+      user_roles: roleMap.get(p.id) || [],
+    }));
+  });

@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -15,7 +16,7 @@ import {
 import { Loader2, Plus, Pencil, Trash2, ShieldCheck } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useSession, useMyProfile, type AppRole } from "@/hooks/use-session";
-import { createUser, updateUser } from "@/lib/admin.functions";
+import { createUser, updateUser, getAdminUsersList } from "@/lib/admin.functions";
 import { deleteConsumer } from "@/lib/consumers.functions";
 import {
   adminStartNumberChange, adminVerifyOldSendNew, adminConfirmNewNumber,
@@ -42,6 +43,7 @@ type UserRow = {
 function AdminUsers() {
   const { user } = useSession();
   const { data: profile } = useMyProfile(user);
+  const getUsersFn = useServerFn(getAdminUsersList);
   const qc = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState({
@@ -61,32 +63,7 @@ function AdminUsers() {
 
   const list = useQuery({
     queryKey: ["admin-users"],
-    queryFn: async () => {
-      let res = await supabase
-        .from("profiles")
-        .select("id, full_name, phone, phone_secondary, email, is_active, created_at")
-        .order("created_at", { ascending: false });
-      if (res.error && /phone_secondary/i.test(res.error.message || "")) {
-        res = await supabase
-          .from("profiles")
-          .select("id, full_name, phone, email, is_active, created_at")
-          .order("created_at", { ascending: false });
-      }
-      if (res.error) throw res.error;
-      const profiles = res.data;
-      const ids = (profiles || []).map((p) => p.id);
-      const { data: roles, error: rolesError } = ids.length
-        ? await supabase.from("user_roles").select("user_id, role").in("user_id", ids)
-        : { data: [], error: null };
-      if (rolesError) throw rolesError;
-      const roleMap = new Map<string, { role: AppRole }[]>();
-      (roles || []).forEach((r) => {
-        const arr = roleMap.get(r.user_id) || [];
-        arr.push({ role: r.role as AppRole });
-        roleMap.set(r.user_id, arr);
-      });
-      return (profiles || []).map((p) => ({ ...p, user_roles: roleMap.get(p.id) || [] })) as UserRow[];
-    },
+    queryFn: async () => (await getUsersFn()) as UserRow[],
   });
 
   const createMut = useMutation({
