@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, useMatchRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -36,7 +36,19 @@ const NONE = "__none__";
 const ALL = "__all__";
 type SortKey = "name" | "phone" | "block" | "device";
 
+// This route is the PARENT of /admin/consumers/$id. When the detail route is
+// active, render the child (the consumer analysis dashboard) via <Outlet/>;
+// otherwise render the consumers list. Kept as a thin wrapper so the list's
+// hooks aren't conditionally skipped (Rules of Hooks).
 function AdminConsumers() {
+  const matchRoute = useMatchRoute();
+  if (matchRoute({ to: "/admin/consumers/$id" })) {
+    return <Outlet />;
+  }
+  return <AdminConsumersList />;
+}
+
+function AdminConsumersList() {
   const { user } = useSession();
   const { data: profile } = useMyProfile(user);
   const qc = useQueryClient();
