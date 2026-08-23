@@ -155,86 +155,142 @@ const DEMO_CONSUMERS: Array<{
   { block: "00",  name: "MainMeter",         meter: "USFL_FL7053", serial: null,             email: "mainmeter@gmail.com" },
 ];
 
+async function seedDemoConsumersHandler(supabaseAdmin: any, locationIdParam: string | null) {
+  let locationId = locationIdParam;
+  if (!locationId) {
+    const { data: loc } = await supabaseAdmin
+      .from("locations").select("id").order("created_at").limit(1).maybeSingle();
+    locationId = loc?.id ?? null;
+  }
+
+  let created = 0, skipped = 0;
+  const { data: list } = await supabaseAdmin.auth.admin.listUsers().catch(() => ({ data: { users: [] } }));
+  const existingUsers = list?.users || [];
+
+  for (let i = 0; i < DEMO_CONSUMERS.length; i++) {
+    const c = DEMO_CONSUMERS[i];
+    const phone = `+9190000${String(i + 1).padStart(5, "0")}`;
+    const digits = phone.replace(/\D/g, "");
+
+    let uid: string | null = null;
+
+    const { data: pByPhone } = await supabaseAdmin.from("profiles").select("id").eq("phone", phone).maybeSingle();
+    const { data: pByEmail } = await supabaseAdmin.from("profiles").select("id").eq("email", c.email).maybeSingle();
+
+    if (pByPhone?.id) {
+      uid = pByPhone.id;
+    } else if (pByEmail?.id) {
+      uid = pByEmail.id;
+    } else {
+      const foundAuth = existingUsers.find(
+        (u: any) => u.email === c.email || u.phone === digits || (u.phone && u.phone.endsWith(digits))
+      );
+      if (foundAuth?.id) {
+        uid = foundAuth.id;
+      } else {
+        const { data: u } = await supabaseAdmin.auth.admin.createUser({
+          email: c.email,
+          phone: digits,
+          email_confirm: true,
+          phone_confirm: true,
+          user_metadata: { full_name: c.name },
+        }).catch(() => ({ data: null }));
+        if (u?.user?.id) {
+          uid = u.user.id;
+        } else {
+          const { data: reList } = await supabaseAdmin.auth.admin.listUsers().catch(() => ({ data: { users: [] } }));
+          const reFound = (reList?.users || []).find((usr: any) => usr.email === c.email);
+          if (reFound?.id) uid = reFound.id;
+        }
+      }
+    }
+
+    if (!uid) {
+      skipped++;
+      continue;
+    }
+
+    await supabaseAdmin.from("profiles").upsert({
+      id: uid,
+      full_name: c.name,
+      phone,
+      email: c.email,
+      is_active: true,
+    }, { onConflict: "id" });
+
+    await supabaseAdmin.from("user_roles").upsert({
+      user_id: uid,
+      role: "consumer",
+    }, { onConflict: "user_id, role" });
+
+    await supabaseAdmin.from("consumer_details").upsert({
+      user_id: uid,
+      device_id: c.meter,
+      meter_id: c.meter,
+      serial_number: c.serial,
+      block_id: c.block,
+      location_id: locationId,
+      connection_date: new Date().toISOString().slice(0, 10),
+    }, { onConflict: "user_id" });
+
+    created++;
+  }
+  return { created, skipped, total: DEMO_CONSUMERS.length };
+}
+
 export const seedDemoConsumers = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) =>
     z.object({ locationId: z.string().uuid().optional().nullable() }).parse(d ?? {}),
   )
   .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    return seedDemoConsumersHandler(supabaseAdmin, data.locationId ?? null);
+  });
 
-    let locationId = data.locationId ?? null;
-    if (!locationId) {
-      const { data: loc } = await supabaseAdmin
-        .from("locations").select("id").order("created_at").limit(1).maybeSingle();
-      locationId = loc?.id ?? null;
+export const getAdminConsumersList = createServerFn({ method: "POST" })
+  .handler(async () => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    let { data: roles } = await supabaseAdmin.from("user_roles").select("user_id").eq("role", "consumer");
+    let ids = (roles || []).map((r: any) => r.user_id);
+
+    if (!ids.length) {
+      await seedDemoConsumersHandler(supabaseAdmin, null);
+      const refetch = await supabaseAdmin.from("user_roles").select("user_id").eq("role", "consumer");
+      ids = (refetch.data || []).map((r: any) => r.user_id);
     }
 
-    let created = 0, skipped = 0;
-    const { data: list } = await supabaseAdmin.auth.admin.listUsers().catch(() => ({ data: { users: [] } }));
-    const existingUsers = list?.users || [];
+    if (!ids.length) return [];
 
-    for (let i = 0; i < DEMO_CONSUMERS.length; i++) {
-      const c = DEMO_CONSUMERS[i];
-      const phone = `+9190000${String(i + 1).padStart(5, "0")}`;
-      const digits = phone.replace(/\D/g, "");
-
-      let uid: string | null = null;
-
-      const { data: existingProf } = await supabaseAdmin
+    const [{ data: profiles }, { data: details }] = await Promise.all([
+      supabaseAdmin
         .from("profiles")
-        .select("id")
-        .or(`phone.eq.${phone},email.eq.${c.email}`)
-        .maybeSingle();
+        .select("id, full_name, phone, email, is_active, created_at")
+        .in("id", ids)
+        .order("created_at", { ascending: false }),
+      supabaseAdmin
+        .from("consumer_details")
+        .select("user_id, meter_id, serial_number, device_id, block_id, location_id, assigned_secretary_id")
+        .in("user_id", ids),
+    ]);
 
-      if (existingProf?.id) {
-        uid = existingProf.id;
-      } else {
-        const foundAuth = existingUsers.find(
-          (u: any) => u.email === c.email || u.phone === digits || (u.phone && u.phone.endsWith(digits))
-        );
-        if (foundAuth?.id) {
-          uid = foundAuth.id;
-        } else {
-          const { data: u } = await supabaseAdmin.auth.admin.createUser({
-            email: c.email,
-            phone: digits,
-            email_confirm: true,
-            phone_confirm: true,
-            user_metadata: { full_name: c.name },
-          }).catch(() => ({ data: null }));
-          if (u?.user?.id) uid = u.user.id;
-        }
-      }
-
-      if (!uid) {
-        skipped++;
-        continue;
-      }
-
-      await supabaseAdmin.from("profiles").upsert({
-        id: uid,
-        full_name: c.name,
-        phone,
-        email: c.email,
-        is_active: true,
-      }, { onConflict: "id" });
-
-      await supabaseAdmin.from("user_roles").upsert({
-        user_id: uid,
-        role: "consumer",
-      }, { onConflict: "user_id, role" });
-
-      await supabaseAdmin.from("consumer_details").upsert({
-        user_id: uid,
-        device_id: c.meter,
-        meter_id: c.meter,
-        serial_number: c.serial,
-        block_id: c.block,
-        location_id: locationId,
-        connection_date: new Date().toISOString().slice(0, 10),
-      }, { onConflict: "user_id" });
-
-      created++;
-    }
-    return { created, skipped, total: DEMO_CONSUMERS.length };
+    const detailMap = new Map((details || []).map((d: any) => [d.user_id, d]));
+    return (profiles || []).map((p: any) => {
+      const d = detailMap.get(p.id);
+      return {
+        id: p.id,
+        full_name: p.full_name,
+        phone: p.phone,
+        email: p.email,
+        is_active: p.is_active,
+        consumer_details: d ? {
+          meter_id: d.meter_id,
+          serial_number: d.serial_number,
+          device_id: d.device_id,
+          block_id: d.block_id,
+          location_id: d.location_id,
+          assigned_secretary_id: d.assigned_secretary_id,
+        } : null,
+      };
+    });
   });
