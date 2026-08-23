@@ -146,6 +146,7 @@ function AdminDashboard() {
       const byId = new Map(filtered.map((c) => [c.id, c]));
       const byDay = new Map<string, number>();
       const byUser = new Map<string, number>();
+      filtered.forEach((c) => byUser.set(c.id, 0));
       let flowRate = 0;
       for (const row of data || []) {
         const day = String(row.reading_date).slice(0, 10);
@@ -158,10 +159,9 @@ function AdminDashboard() {
       const leaders = Array.from(byUser.entries())
         .map(([id, consumption]) => {
           const c = byId.get(id);
-          return { id, name: c ? `${c.block} · ${c.name.replace(/^\d+ · /, "")}` : id, device_id: c?.device || "", consumption: Math.round(consumption) };
+          return { id, name: c ? `${c.block ? `${c.block} · ` : ""}${c.name.replace(/^.*? · /, "")}` : id, device_id: c?.device || "", consumption: Math.round(consumption) };
         })
-        .sort((a, b) => b.consumption - a.consumption)
-        .slice(0, topLimit);
+        .sort((a, b) => b.consumption - a.consumption);
       return {
         trend,
         leaders,
@@ -213,6 +213,7 @@ function AdminDashboard() {
   type LeaderboardSortKey = "rank" | "device_id" | "name" | "consumption";
   const [sortKey, setSortKey] = useState<LeaderboardSortKey>("rank");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [leaderboardSearch, setLeaderboardSearch] = useState("");
 
   const toggleSort = (key: LeaderboardSortKey) => {
     if (sortKey === key) {
@@ -224,10 +225,18 @@ function AdminDashboard() {
   };
 
   const sortedLeaders = useMemo(() => {
-    const list = leaders.map((l, index) => ({
+    let list = leaders.map((l, index) => ({
       ...l,
       rank: index + 1,
     }));
+    if (leaderboardSearch.trim()) {
+      const q = leaderboardSearch.trim().toLowerCase();
+      list = list.filter(
+        (l) =>
+          (l.name || "").toLowerCase().includes(q) ||
+          (l.device_id || "").toLowerCase().includes(q)
+      );
+    }
     const dir = sortDir === "asc" ? 1 : -1;
     return list.sort((a, b) => {
       let valA: string | number = "";
@@ -254,7 +263,7 @@ function AdminDashboard() {
       if (valA > valB) return 1 * dir;
       return 0;
     });
-  }, [leaders, sortKey, sortDir]);
+  }, [leaders, sortKey, sortDir, leaderboardSearch]);
 
   const renderSortIcon = (key: LeaderboardSortKey) => {
     if (sortKey !== key) return <ArrowUpDown className="h-3 w-3 opacity-50" />;
@@ -367,7 +376,7 @@ function AdminDashboard() {
           <CardContent className="h-72">
             {leaders.length ? (
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={leaders} layout="vertical" margin={{ left: 40 }}>
+                <BarChart data={leaders.slice(0, topLimit)} layout="vertical" margin={{ left: 40 }}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis type="number" fontSize={10} domain={[0, "auto"]} />
                   <YAxis type="category" dataKey="name" fontSize={10} width={110} />
@@ -382,7 +391,22 @@ function AdminDashboard() {
 
       {leaders.length > 0 && (
         <Card className="mt-4">
-          <CardHeader><CardTitle>Leaderboard</CardTitle></CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+            <div>
+              <CardTitle>Leaderboard</CardTitle>
+              <p className="text-xs text-muted-foreground mt-1">
+                Listing all {leaders.length} consumers{leaderboardSearch.trim() ? ` (filtered to ${sortedLeaders.length})` : ""}
+              </p>
+            </div>
+            <div className="w-64">
+              <Input
+                placeholder="Search consumer or device..."
+                value={leaderboardSearch}
+                onChange={(e) => setLeaderboardSearch(e.target.value)}
+                className="h-8 text-xs"
+              />
+            </div>
+          </CardHeader>
           <CardContent className="p-0">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -413,11 +437,11 @@ function AdminDashboard() {
                 </thead>
                 <tbody className="divide-y">
                   {sortedLeaders.map((l) => (
-                    <tr key={`${l.id}-${l.device_id}`}>
-                      <td className="px-4 py-2 text-muted-foreground">{l.rank}</td>
+                    <tr key={`${l.id}-${l.device_id}`} className="hover:bg-muted/30 transition-colors">
+                      <td className="px-4 py-2 text-muted-foreground font-medium">{l.rank}</td>
                       <td className="px-4 py-2 font-mono text-xs text-muted-foreground">{l.device_id || "—"}</td>
                       <td className="px-4 py-2 font-medium">{l.name}</td>
-                      <td className="px-4 py-2">{l.consumption.toLocaleString("en-IN")} L</td>
+                      <td className="px-4 py-2 font-semibold">{l.consumption.toLocaleString("en-IN")} L</td>
                       <td className="px-4 py-2 text-right">
                         <Link to="/admin/consumers/$id" params={{ id: l.id }}>
                           <Button size="sm" variant="ghost">View</Button>

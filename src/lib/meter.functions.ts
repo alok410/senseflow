@@ -662,22 +662,30 @@ export const getAdminDashboardStats = createServerFn({ method: "POST" })
       analyticsHistories.reduce((s, days) => s + sumDailyConsumption(days), 0) * 1000,
     );
 
-    // Leaderboard (top consumers in range). Look detail up BY DEVICE (not by index)
+    // Leaderboard (all consumers in range). Look detail up BY DEVICE (not by index)
     // so it can never desync from analyticsDevices if the filter changes later.
     const detailByDevice = new Map(details.map((d) => [d.device_id, d]));
     const groupedByDevice = new Map<string, { device_id: string; total_l: number; detail: DashboardConsumer }>();
+    details.forEach((det) => {
+      if (det.device_id !== MAIN_METER_DEVICE) {
+        groupedByDevice.set(det.device_id, { device_id: det.device_id, total_l: 0, detail: det });
+      }
+    });
     analyticsDevices.forEach((dev, i) => {
       const total = Math.round(sumDailyConsumption(analyticsHistories[i]) * 1000);
       const existing = groupedByDevice.get(dev);
-      if (existing) existing.total_l += total;
-      else groupedByDevice.set(dev, { device_id: dev, total_l: total, detail: detailByDevice.get(dev)! });
+      if (existing) {
+        existing.total_l += total;
+      } else {
+        const det = detailByDevice.get(dev);
+        if (det) groupedByDevice.set(dev, { device_id: dev, total_l: total, detail: det });
+      }
     });
-    const top = Array.from(groupedByDevice.values())
-      .sort((a, b) => b.total_l - a.total_l)
-      .slice(0, data.topLimit ?? 20);
-    const leaders = top.map((t) => {
+    const allRanked = Array.from(groupedByDevice.values())
+      .sort((a, b) => b.total_l - a.total_l);
+    const leaders = allRanked.map((t) => {
       const det = t.detail;
-      const labelName = det.full_name || det.phone || t.device_id;
+      const labelName = det?.full_name || det?.phone || t.device_id || "Consumer";
       return {
         id: det?.user_id || t.device_id,
         name: det?.block_id ? `${det.block_id} · ${labelName}` : labelName,
