@@ -1,4 +1,5 @@
 import { createFileRoute, Link, Outlet, useMatchRoute } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -15,7 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useSession, useMyProfile } from "@/hooks/use-session";
-import { createConsumer, updateConsumer, deleteConsumer, seedDemoConsumers } from "@/lib/consumers.functions";
+import { createConsumer, updateConsumer, deleteConsumer, seedDemoConsumers, getAdminConsumersList } from "@/lib/consumers.functions";
 import { fetchAndStoreLatestReading } from "@/lib/meter.functions";
 import { ADMIN_NAV } from "@/lib/nav";
 
@@ -51,6 +52,7 @@ function AdminConsumers() {
 function AdminConsumersList() {
   const { user } = useSession();
   const { data: profile } = useMyProfile(user);
+  const getConsumersFn = useServerFn(getAdminConsumersList);
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Row | null>(null);
@@ -68,49 +70,7 @@ function AdminConsumersList() {
 
   const list = useQuery({
     queryKey: ["admin-consumers"],
-    queryFn: async () => {
-      let { data: roles, error: rolesError } = await supabase.from("user_roles").select("user_id").eq("role", "consumer");
-      if (rolesError) throw rolesError;
-      let ids = (roles || []).map((r) => r.user_id);
-      if (!ids.length) {
-        await seedDemoConsumers({ data: {} }).catch(() => null);
-        const refetch = await supabase.from("user_roles").select("user_id").eq("role", "consumer");
-        ids = (refetch.data || []).map((r) => r.user_id);
-      }
-      if (!ids.length) return [] as Row[];
-      const [{ data: profiles, error }, { data: details, error: detailsError }] = await Promise.all([
-        supabase
-        .from("profiles")
-        .select("id, full_name, phone, email, is_active, created_at")
-        .in("id", ids)
-        .order("created_at", { ascending: false }),
-        supabase
-          .from("consumer_details")
-          .select("user_id, meter_id, serial_number, device_id, block_id, location_id, assigned_secretary_id")
-          .in("user_id", ids),
-      ]);
-      if (error) throw error;
-      if (detailsError) throw detailsError;
-      const detailMap = new Map((details || []).map((d) => [d.user_id, d]));
-      return (profiles || []).map((p) => {
-        const d = detailMap.get(p.id);
-        return {
-          id: p.id,
-          full_name: p.full_name,
-          phone: p.phone,
-          email: p.email,
-          is_active: p.is_active,
-          consumer_details: d ? {
-            meter_id: d.meter_id,
-            serial_number: d.serial_number,
-            device_id: d.device_id,
-            block_id: d.block_id,
-            location_id: d.location_id,
-            assigned_secretary_id: d.assigned_secretary_id,
-          } : null,
-        };
-      }) as Row[];
-    },
+    queryFn: async () => (await getConsumersFn()) as Row[],
   });
 
   const locName = useMemo(() => {
