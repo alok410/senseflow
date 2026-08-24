@@ -19,6 +19,7 @@ import { useSession, useMyProfile } from "@/hooks/use-session";
 import { createConsumer, updateConsumer, deleteConsumer, seedDemoConsumers, getAdminConsumersList } from "@/lib/consumers.functions";
 import { fetchAndStoreLatestReading } from "@/lib/meter.functions";
 import { ADMIN_NAV } from "@/lib/nav";
+import { AdminTabNav } from "@/components/AdminTabNav";
 
 export const Route = createFileRoute("/_authenticated/admin/consumers")({
   component: AdminConsumers,
@@ -166,6 +167,7 @@ function AdminConsumersList() {
 
   return (
     <DashboardLayout navItems={ADMIN_NAV} title="Consumers" userName={profile?.full_name || null} userPhone={profile?.phone || null}>
+      <AdminTabNav />
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <div className="relative flex-1 min-w-[220px]">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />

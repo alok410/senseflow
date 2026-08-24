@@ -17,6 +17,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useSession, useMyProfile } from "@/hooks/use-session";
 import { createSecretary, updateSecretary, deleteSecretary } from "@/lib/secretaries.functions";
 import { ADMIN_NAV } from "@/lib/nav";
+import { AdminTabNav } from "@/components/AdminTabNav";
 
 export const Route = createFileRoute("/_authenticated/admin/secretaries")({
   component: AdminSecretaries,
@@ -56,9 +57,16 @@ function AdminSecretaries() {
   const list = useQuery({
     queryKey: ["admin-secretaries"],
     queryFn: async () => {
-      const { data: roles, error: rolesError } = await supabase.from("user_roles").select("user_id").eq("role", "secretary");
+      const [{ data: roles, error: rolesError }, { data: secLocs, error: secLocsError }] = await Promise.all([
+        supabase.from("user_roles").select("user_id").eq("role", "secretary"),
+        supabase.from("secretary_locations").select("secretary_id"),
+      ]);
       if (rolesError) throw rolesError;
-      const ids = (roles || []).map((r) => r.user_id);
+      if (secLocsError) throw secLocsError;
+      const ids = Array.from(new Set([
+        ...(roles || []).map((r) => r.user_id),
+        ...(secLocs || []).map((sl) => sl.secretary_id),
+      ]));
       if (!ids.length) return [] as Row[];
       const [{ data: profiles, error }, { data: secretaryLocations, error: locationError }] = await Promise.all([
         supabase
@@ -147,6 +155,7 @@ function AdminSecretaries() {
 
   return (
     <DashboardLayout navItems={ADMIN_NAV} title="Secretaries" userName={profile?.full_name || null} userPhone={profile?.phone || null}>
+      <AdminTabNav />
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <div className="relative flex-1 min-w-[220px]">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />

@@ -17,6 +17,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useSession, useMyProfile } from "@/hooks/use-session";
 import { createLocation, updateLocation, deleteLocation } from "@/lib/locations.functions";
 import { ADMIN_NAV } from "@/lib/nav";
+import { AdminTabNav } from "@/components/AdminTabNav";
 
 export const Route = createFileRoute("/_authenticated/admin/locations")({
   component: AdminLocations,
@@ -75,6 +76,7 @@ function AdminLocations() {
 
   return (
     <DashboardLayout navItems={ADMIN_NAV} title="Locations" userName={profile?.full_name || null} userPhone={profile?.phone || null}>
+      <AdminTabNav />
       <div className="mb-4 flex justify-end">
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild><Button><Plus className="mr-2 h-4 w-4" /> Add location</Button></DialogTrigger>

@@ -13,7 +13,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
-import { Loader2, Plus, Pencil, Trash2, ShieldCheck } from "lucide-react";
+import { Loader2, Plus, Pencil, Trash2, ShieldCheck, Search } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useSession, useMyProfile, type AppRole } from "@/hooks/use-session";
 import { createUser, updateUser, getAdminUsersList } from "@/lib/admin.functions";
@@ -22,6 +22,7 @@ import {
   adminStartNumberChange, adminVerifyOldSendNew, adminConfirmNewNumber,
 } from "@/lib/otp.functions";
 import { ADMIN_NAV } from "@/lib/nav";
+import { AdminTabNav } from "@/components/AdminTabNav";
 
 export const Route = createFileRoute("/_authenticated/admin/users")({
   component: AdminUsers,
@@ -46,6 +47,8 @@ function AdminUsers() {
   const getUsersFn = useServerFn(getAdminUsersList);
   const qc = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState<string>("all");
   const [form, setForm] = useState({
     fullName: "", phone: "", phoneSecondary: "", email: "", roles: ["secretary"] as AppRole[],
   });
@@ -167,22 +170,54 @@ function AdminUsers() {
     setSentTo("");
   };
 
-  // Consumers are managed on Admin → Consumers; show staff (+ unassigned) only.
-  const staffUsers = (list.data || []).filter((u) => {
+  const filteredUsers = (list.data || []).filter((u) => {
     const roles = (u.user_roles || []).map((r) => r.role);
-    const isStaff = roles.includes("admin") || roles.includes("secretary");
-    const isConsumer = roles.includes("consumer");
-    return isStaff || !isConsumer;
+    if (roleFilter !== "all" && !roles.includes(roleFilter as AppRole)) {
+      return false;
+    }
+    if (!search.trim()) return true;
+    const q = search.trim().toLowerCase();
+    return (
+      (u.full_name || "").toLowerCase().includes(q) ||
+      (u.phone || "").toLowerCase().includes(q) ||
+      (u.phone_secondary || "").toLowerCase().includes(q) ||
+      (u.email || "").toLowerCase().includes(q)
+    );
   });
 
   return (
     <DashboardLayout
       navItems={ADMIN_NAV}
-      title="Staff users"
+      title="Users management"
       userName={profile?.full_name || null}
       userPhone={profile?.phone || null}
     >
-      <div className="mb-4 flex justify-end">
+      <AdminTabNav />
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative w-64">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input className="pl-9" placeholder="Search user name or phone..." value={search} onChange={(e) => setSearch(e.target.value)} />
+          </div>
+          <div className="flex items-center rounded-lg border bg-muted/30 p-1 gap-1">
+            {[
+              { id: "all", label: "All users" },
+              { id: "secretary", label: "Secretaries" },
+              { id: "admin", label: "Admins" },
+              { id: "consumer", label: "Consumers" },
+            ].map((f) => (
+              <Button
+                key={f.id}
+                size="sm"
+                variant={roleFilter === f.id ? "default" : "ghost"}
+                className="h-7 text-xs px-2.5"
+                onClick={() => setRoleFilter(f.id)}
+              >
+                {f.label}
+              </Button>
+            ))}
+          </div>
+        </div>
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
           <DialogTrigger asChild>
             <Button><Plus className="mr-2 h-4 w-4" /> Add user</Button>
@@ -254,7 +289,7 @@ function AdminUsers() {
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {staffUsers.map((u) => {
+                {filteredUsers.map((u) => {
                   const roles = (u.user_roles || []).map((r) => r.role);
                   const isAdmin = roles.includes("admin");
                   return (
