@@ -213,15 +213,25 @@ export const getAdminUsersList = createServerFn({ method: "POST" })
     const profiles = res.data || [];
     const ids = profiles.map((p: any) => p.id);
 
-    const { data: roles } = ids.length
-      ? await supabaseAdmin.from("user_roles").select("user_id, role").in("user_id", ids)
-      : { data: [] };
+    const [{ data: roles }, { data: secLocs }] = ids.length
+      ? await Promise.all([
+          supabaseAdmin.from("user_roles").select("user_id, role").in("user_id", ids),
+          supabaseAdmin.from("secretary_locations").select("secretary_id").in("secretary_id", ids),
+        ])
+      : [{ data: [] }, { data: [] }];
 
     const roleMap = new Map<string, { role: string }[]>();
     (roles || []).forEach((r: any) => {
       const arr = roleMap.get(r.user_id) || [];
       arr.push({ role: r.role });
       roleMap.set(r.user_id, arr);
+    });
+    (secLocs || []).forEach((sl: any) => {
+      const arr = roleMap.get(sl.secretary_id) || [];
+      if (!arr.some((r) => r.role === "secretary")) {
+        arr.push({ role: "secretary" });
+        roleMap.set(sl.secretary_id, arr);
+      }
     });
 
     return profiles.map((p: any) => ({
