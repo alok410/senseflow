@@ -238,7 +238,7 @@ export const getAdminUsersList = createServerFn({ method: "POST" })
     }
 
     // 2. Fetch profiles
-    let res = await supabaseAdmin
+    let res: any = await supabaseAdmin
       .from("profiles")
       .select("id, full_name, phone, phone_secondary, email, is_active, created_at")
       .order("created_at", { ascending: false });
