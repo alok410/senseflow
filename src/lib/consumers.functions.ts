@@ -22,31 +22,75 @@ export const createConsumer = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-    const { data: dup } = await supabaseAdmin
-      .from("profiles").select("id").eq("phone", data.phone).maybeSingle();
-    if (dup) throw new Error("A user with this phone number already exists.");
+    // Look up existing profile by phone (primary or secondary)
+    let { data: existingProfile } = await supabaseAdmin
+      .from("profiles")
+      .select("id, full_name, phone, email")
+      .or(`phone.eq.${data.phone},phone_secondary.eq.${data.phone}`)
+      .limit(1)
+      .maybeSingle();
 
-    const digits = data.phone.replace(/\D/g, "");
-    const authEmail = data.email && data.email.length > 0
-      ? data.email : `phone-${digits}@sensorflow.local`;
+    if (!existingProfile) {
+      const { data: pSingle } = await supabaseAdmin
+        .from("profiles")
+        .select("id, full_name, phone, email")
+        .eq("phone", data.phone)
+        .limit(1)
+        .maybeSingle();
+      existingProfile = pSingle;
+    }
 
-    const { data: created, error: createErr } = await supabaseAdmin.auth.admin.createUser({
-      email: authEmail,
-      phone: digits,
-      email_confirm: true,
-      phone_confirm: true,
-      user_metadata: { full_name: data.fullName },
-    });
-    if (createErr || !created?.user) throw new Error(createErr?.message || "Failed to create user");
-    const uid = created.user.id;
+    let uid: string;
 
-    await supabaseAdmin.from("profiles")
-      .update({ full_name: data.fullName, phone: data.phone, email: data.email ?? null })
-      .eq("id", uid);
-    await supabaseAdmin.from("user_roles").delete().eq("user_id", uid);
-    await supabaseAdmin.from("user_roles").insert({ user_id: uid, role: "consumer" });
+    if (existingProfile) {
+      uid = existingProfile.id;
+      const patch: Record<string, unknown> = { is_active: true };
+      if (data.fullName) patch.full_name = data.fullName;
+      if (data.email) patch.email = data.email;
+      await supabaseAdmin.from("profiles").update(patch).eq("id", uid);
+    } else {
+      const digits = data.phone.replace(/\D/g, "");
+      const authEmail = data.email && data.email.length > 0
+        ? data.email : `phone-${digits}@sensorflow.local`;
 
-    // consumer_details: upsert (trigger may or may not have created a row)
+      const { data: created, error: createErr } = await supabaseAdmin.auth.admin.createUser({
+        email: authEmail,
+        phone: digits,
+        email_confirm: true,
+        phone_confirm: true,
+        user_metadata: { full_name: data.fullName },
+      });
+
+      if (createErr || !created?.user) {
+        const { data: list } = await supabaseAdmin.auth.admin.listUsers().catch(() => ({ data: { users: [] } }));
+        const found = (list?.users || []).find(
+          (u: any) => u.phone === digits || (u.phone && u.phone.endsWith(digits)) || u.email === authEmail
+        );
+        if (found) {
+          uid = found.id;
+        } else {
+          throw new Error(createErr?.message || "Failed to create user");
+        }
+      } else {
+        uid = created.user.id;
+      }
+
+      await supabaseAdmin.from("profiles").upsert({
+        id: uid,
+        full_name: data.fullName,
+        phone: data.phone,
+        email: data.email ?? null,
+        is_active: true,
+      }, { onConflict: "id" });
+    }
+
+    // Add consumer role without clearing existing roles
+    await supabaseAdmin.from("user_roles").upsert(
+      { user_id: uid, role: "consumer" },
+      { onConflict: "user_id, role" }
+    );
+
+    // consumer_details: upsert
     await supabaseAdmin.from("consumer_details").upsert({
       user_id: uid,
       meter_id: data.meterId ?? null,
@@ -119,8 +163,18 @@ export const deleteConsumer = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => z.object({ userId: z.string().uuid() }).parse(d))
   .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { error } = await supabaseAdmin.auth.admin.deleteUser(data.userId);
-    if (error) throw new Error(error.message);
+    await supabaseAdmin.from("consumer_details").delete().eq("user_id", data.userId);
+    await supabaseAdmin.from("user_roles").delete().eq("user_id", data.userId).eq("role", "consumer");
+
+    // Only delete user from auth if no remaining roles exist
+    const { data: remaining } = await supabaseAdmin
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", data.userId);
+    if (!remaining || remaining.length === 0) {
+      const { error } = await supabaseAdmin.auth.admin.deleteUser(data.userId);
+      if (error) throw new Error(error.message);
+    }
     return { ok: true };
   });
 
@@ -251,25 +305,13 @@ export const getAdminConsumersList = createServerFn({ method: "POST" })
   .handler(async () => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-    const getPureConsumerIds = (rolesData: any[]) => {
-      const roleMap = new Map<string, Set<string>>();
-      (rolesData || []).forEach((r: any) => {
-        const set = roleMap.get(r.user_id) || new Set();
-        set.add(r.role);
-        roleMap.set(r.user_id, set);
-      });
-      return Array.from(roleMap.entries())
-        .filter(([_, set]) => set.has("consumer") && !set.has("admin") && !set.has("secretary"))
-        .map(([uid]) => uid);
-    };
-
-    let { data: roles } = await supabaseAdmin.from("user_roles").select("user_id, role");
-    let ids = getPureConsumerIds(roles || []);
+    let { data: roles } = await supabaseAdmin.from("user_roles").select("user_id, role").eq("role", "consumer");
+    let ids = Array.from(new Set((roles || []).map((r: any) => r.user_id)));
 
     if (!ids.length) {
       await seedDemoConsumersHandler(supabaseAdmin, null);
-      const refetch = await supabaseAdmin.from("user_roles").select("user_id, role");
-      ids = getPureConsumerIds(refetch.data || []);
+      const refetch = await supabaseAdmin.from("user_roles").select("user_id, role").eq("role", "consumer");
+      ids = Array.from(new Set((refetch.data || []).map((r: any) => r.user_id)));
     }
 
     if (!ids.length) return [];

@@ -62,26 +62,14 @@ function AdminDashboard() {
   const consumers = useQuery({
     queryKey: ["admin-dashboard-consumers"],
     queryFn: async () => {
-      let { data: roles, error: roleError } = await supabase.from("user_roles").select("user_id, role");
+      let { data: roles, error: roleError } = await supabase.from("user_roles").select("user_id, role").eq("role", "consumer");
       if (roleError) throw roleError;
 
-      const getPureConsumerIds = (rolesData: any[]) => {
-        const roleMap = new Map<string, Set<string>>();
-        (rolesData || []).forEach((r: any) => {
-          const set = roleMap.get(r.user_id) || new Set();
-          set.add(r.role);
-          roleMap.set(r.user_id, set);
-        });
-        return Array.from(roleMap.entries())
-          .filter(([_, set]) => set.has("consumer") && !set.has("admin") && !set.has("secretary"))
-          .map(([uid]) => uid);
-      };
-
-      let ids = getPureConsumerIds(roles || []);
+      let ids = Array.from(new Set((roles || []).map((r) => r.user_id)));
       if (!ids.length) {
         await seedDemoConsumers({ data: {} }).catch(() => null);
-        const refetch = await supabase.from("user_roles").select("user_id, role");
-        ids = getPureConsumerIds(refetch.data || []);
+        const refetch = await supabase.from("user_roles").select("user_id, role").eq("role", "consumer");
+        ids = Array.from(new Set((refetch.data || []).map((r) => r.user_id)));
       }
       if (!ids.length) return [] as DashboardConsumerRow[];
       const [{ data: profiles, error: profileError }, { data: details, error: detailsError }] = await Promise.all([

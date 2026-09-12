@@ -17,32 +17,80 @@ export const createSecretary = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-    const { data: dup } = await supabaseAdmin
-      .from("profiles").select("id").eq("phone", data.phone).maybeSingle();
-    if (dup) throw new Error("A user with this phone number already exists.");
+    // Look up existing profile by phone (primary or secondary)
+    let { data: existingProfile } = await supabaseAdmin
+      .from("profiles")
+      .select("id, full_name, phone, email")
+      .or(`phone.eq.${data.phone},phone_secondary.eq.${data.phone}`)
+      .limit(1)
+      .maybeSingle();
 
-    const digits = data.phone.replace(/\D/g, "");
-    const authEmail = data.email && data.email.length > 0
-      ? data.email : `phone-${digits}@sensorflow.local`;
+    if (!existingProfile) {
+      const { data: pSingle } = await supabaseAdmin
+        .from("profiles")
+        .select("id, full_name, phone, email")
+        .eq("phone", data.phone)
+        .limit(1)
+        .maybeSingle();
+      existingProfile = pSingle;
+    }
 
-    const { data: created, error: createErr } = await supabaseAdmin.auth.admin.createUser({
-      email: authEmail,
-      phone: digits,
-      email_confirm: true,
-      phone_confirm: true,
-      user_metadata: { full_name: data.fullName },
-    });
-    if (createErr || !created?.user) throw new Error(createErr?.message || "Failed to create user");
-    const uid = created.user.id;
+    let uid: string;
 
-    await supabaseAdmin.from("profiles")
-      .update({ full_name: data.fullName, phone: data.phone, email: data.email ?? null })
-      .eq("id", uid);
-    await supabaseAdmin.from("user_roles").delete().eq("user_id", uid);
-    await supabaseAdmin.from("user_roles").insert({ user_id: uid, role: "secretary" });
-    if (data.locationId) {
-      await supabaseAdmin.from("secretary_locations")
-        .insert({ secretary_id: uid, location_id: data.locationId });
+    if (existingProfile) {
+      uid = existingProfile.id;
+      const patch: Record<string, unknown> = { is_active: true };
+      if (data.fullName) patch.full_name = data.fullName;
+      if (data.email) patch.email = data.email;
+      await supabaseAdmin.from("profiles").update(patch).eq("id", uid);
+    } else {
+      const digits = data.phone.replace(/\D/g, "");
+      const authEmail = data.email && data.email.length > 0
+        ? data.email : `phone-${digits}@sensorflow.local`;
+
+      const { data: created, error: createErr } = await supabaseAdmin.auth.admin.createUser({
+        email: authEmail,
+        phone: digits,
+        email_confirm: true,
+        phone_confirm: true,
+        user_metadata: { full_name: data.fullName },
+      });
+
+      if (createErr || !created?.user) {
+        const { data: list } = await supabaseAdmin.auth.admin.listUsers().catch(() => ({ data: { users: [] } }));
+        const found = (list?.users || []).find(
+          (u: any) => u.phone === digits || (u.phone && u.phone.endsWith(digits)) || u.email === authEmail
+        );
+        if (found) {
+          uid = found.id;
+        } else {
+          throw new Error(createErr?.message || "Failed to create user");
+        }
+      } else {
+        uid = created.user.id;
+      }
+
+      await supabaseAdmin.from("profiles").upsert({
+        id: uid,
+        full_name: data.fullName,
+        phone: data.phone,
+        email: data.email ?? null,
+        is_active: true,
+      }, { onConflict: "id" });
+    }
+
+    // Add secretary role without clearing existing roles
+    await supabaseAdmin.from("user_roles").upsert(
+      { user_id: uid, role: "secretary" },
+      { onConflict: "user_id, role" }
+    );
+
+    if (data.locationId !== undefined) {
+      await supabaseAdmin.from("secretary_locations").delete().eq("secretary_id", uid);
+      if (data.locationId) {
+        await supabaseAdmin.from("secretary_locations")
+          .insert({ secretary_id: uid, location_id: data.locationId });
+      }
     }
     return { id: uid };
   });
@@ -87,6 +135,14 @@ export const deleteSecretary = createServerFn({ method: "POST" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     await supabaseAdmin.from("secretary_locations").delete().eq("secretary_id", data.userId);
     await supabaseAdmin.from("user_roles").delete().eq("user_id", data.userId).eq("role", "secretary");
-    await supabaseAdmin.from("profiles").update({ is_active: false }).eq("id", data.userId);
+
+    // Only deactivate profile if no remaining roles exist
+    const { data: remaining } = await supabaseAdmin
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", data.userId);
+    if (!remaining || remaining.length === 0) {
+      await supabaseAdmin.from("profiles").update({ is_active: false }).eq("id", data.userId);
+    }
     return { ok: true };
   });

@@ -50,6 +50,44 @@ export const createUser = createServerFn({ method: "POST" })
     if (data.phoneSecondary && data.phoneSecondary === data.phone) {
       throw new Error("Second number must be different from the primary number.");
     }
+
+    // Check if an account already exists with this phone number
+    let { data: existingProfile } = await supabaseAdmin
+      .from("profiles")
+      .select("id, full_name, phone, phone_secondary, email")
+      .or(`phone.eq.${data.phone},phone_secondary.eq.${data.phone}`)
+      .limit(1)
+      .maybeSingle();
+
+    if (!existingProfile) {
+      const { data: pSingle } = await supabaseAdmin
+        .from("profiles")
+        .select("id, full_name, phone, phone_secondary, email")
+        .eq("phone", data.phone)
+        .limit(1)
+        .maybeSingle();
+      existingProfile = pSingle;
+    }
+
+    if (existingProfile) {
+      const newId = existingProfile.id;
+      if (data.phoneSecondary) await assertPhoneFree(supabaseAdmin, data.phoneSecondary, newId);
+      await updateProfileTolerant(supabaseAdmin, newId, {
+        full_name: data.fullName,
+        phone: data.phone,
+        phone_secondary: data.phoneSecondary ?? null,
+        email: data.email ?? null,
+      });
+
+      for (const role of data.roles) {
+        await supabaseAdmin.from("user_roles").upsert(
+          { user_id: newId, role },
+          { onConflict: "user_id, role" }
+        );
+      }
+      return { id: newId };
+    }
+
     await assertPhoneFree(supabaseAdmin, data.phone);
     if (data.phoneSecondary) await assertPhoneFree(supabaseAdmin, data.phoneSecondary);
 
