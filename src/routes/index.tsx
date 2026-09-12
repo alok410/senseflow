@@ -71,7 +71,9 @@ function Landing() {
               <f.icon className="h-8 w-8 text-primary" />
               <h3 className="mt-4 text-lg font-semibold">{f.title}</h3>
               <p className="mt-2 text-sm text-muted-foreground">{f.desc}</p>
-              <Button className="mt-4" size="sm">Sign in as {f.title}</Button>
+              <span className="mt-4 inline-flex h-9 items-center justify-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground">
+                Sign in as {f.title}
+              </span>
             </button>
           ))}
         </div>
