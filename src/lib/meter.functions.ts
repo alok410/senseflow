@@ -592,9 +592,17 @@ export const getAdminDashboardStats = createServerFn({ method: "POST" })
     if (data.locationId) details = details.filter((d) => d.location_id === data.locationId);
     if (data.userId) details = details.filter((d) => d.user_id === data.userId);
 
-    let secretaryCount = (secretaryRolesRes.data ?? []).length;
+    // Verify secretary IDs against profiles so the count matches the Secretaries list page
+    const secretaryIds = Array.from(new Set((secretaryRolesRes.data ?? []).map((r) => r.user_id)));
+    const secretaryProfilesRes = secretaryIds.length
+      ? await supabaseAdmin.from("profiles").select("id").in("id", secretaryIds)
+      : { data: [] as any[], error: null };
+    const validSecretaryIds = new Set((secretaryProfilesRes.data ?? []).map((p: any) => p.id));
+
+    let secretaryCount = secretaryIds.filter((id) => validSecretaryIds.has(id)).length;
     if (data.locationId) {
-      secretaryCount = new Set(((secretaryLocationsRes.data ?? []) as any[]).map((s) => s.secretary_id)).size;
+      const locSecIds = new Set(((secretaryLocationsRes.data ?? []) as any[]).map((s) => s.secretary_id));
+      secretaryCount = secretaryIds.filter((id) => validSecretaryIds.has(id) && locSecIds.has(id)).length;
     }
 
     const startIso = `${data.start}T00:00:00Z`;
@@ -710,7 +718,7 @@ export const getAdminDashboardStats = createServerFn({ method: "POST" })
       consumers: details.length,          // has device_id — for analytics / leaderboard
       totalConsumers: consumerIds.length, // all users with consumer role — for the stat card
       secretaries: secretaryCount,
-      totalSecretaries: (secretaryRolesRes.data ?? []).length,
+      totalSecretaries: secretaryIds.filter((id) => validSecretaryIds.has(id)).length,
       locations: locationsRes.count ?? 0,
       mainMeter: {
         available: mainInSet && (!!mainLatest || mainHistory.length > 0),
