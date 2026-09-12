@@ -1,7 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { Droplets, BarChart3, Users, Shield } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { GradientWave } from "@/components/ui/gradient-wave";
 import { AppFooter } from "@/components/AppFooter";
 import { useSession } from "@/hooks/use-session";
