@@ -47,7 +47,7 @@ export const createConsumer = createServerFn({ method: "POST" })
       const patch: Record<string, unknown> = { is_active: true };
       if (data.fullName) patch.full_name = data.fullName;
       if (data.email) patch.email = data.email;
-      await supabaseAdmin.from("profiles").update(patch).eq("id", uid);
+      await supabaseAdmin.from("profiles").update(patch as any).eq("id", uid);
     } else {
       const digits = data.phone.replace(/\D/g, "");
       const authEmail = data.email && data.email.length > 0

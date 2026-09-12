@@ -334,7 +334,7 @@ function AdminUsers() {
                     </tr>
                   );
                 })}
-                {!staffUsers.length && (
+                {!filteredUsers.length && (
                   <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">No staff users yet.</td></tr>
                 )}
               </tbody>

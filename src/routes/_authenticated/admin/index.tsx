@@ -309,7 +309,7 @@ function AdminDashboard() {
                   <Bar dataKey="consumption" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
-            ) : <p className="text-sm text-muted-foreground">{liveStats.isLoading || localReadings.isLoading ? "Loading readings…" : "No consumption in range."}</p>}
+            ) : <p className="text-sm text-muted-foreground">{liveStats.isLoading ? "Loading readings…" : "No consumption in range."}</p>}
           </CardContent>
         </Card>
 
