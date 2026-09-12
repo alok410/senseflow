@@ -9,36 +9,36 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as IndexRouteImport } from './routes/index'
-import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as AuthRouteImport } from './routes/auth'
+import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
+import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
-import { Route as AuthenticatedAdminIndexRouteImport } from './routes/_authenticated/admin/index'
-import { Route as AuthenticatedAdminAnalyticsRouteImport } from './routes/_authenticated/admin/analytics'
-import { Route as AuthenticatedAdminConsumersRouteImport } from './routes/_authenticated/admin/consumers'
-import { Route as AuthenticatedAdminInvoicesRouteImport } from './routes/_authenticated/admin/invoices'
-import { Route as AuthenticatedAdminLocationsRouteImport } from './routes/_authenticated/admin/locations'
-import { Route as AuthenticatedAdminMainMeterRouteImport } from './routes/_authenticated/admin/main-meter'
-import { Route as AuthenticatedAdminRatesRouteImport } from './routes/_authenticated/admin/rates'
-import { Route as AuthenticatedAdminSecretariesRouteImport } from './routes/_authenticated/admin/secretaries'
-import { Route as AuthenticatedAdminUsersRouteImport } from './routes/_authenticated/admin/users'
-import { Route as AuthenticatedConsumerIndexRouteImport } from './routes/_authenticated/consumer/index'
 import { Route as AuthenticatedSecretaryIndexRouteImport } from './routes/_authenticated/secretary/index'
+import { Route as AuthenticatedConsumerIndexRouteImport } from './routes/_authenticated/consumer/index'
+import { Route as AuthenticatedAdminIndexRouteImport } from './routes/_authenticated/admin/index'
 import { Route as AuthenticatedSecretaryUsersRouteImport } from './routes/_authenticated/secretary/users'
+import { Route as AuthenticatedAdminUsersRouteImport } from './routes/_authenticated/admin/users'
+import { Route as AuthenticatedAdminSecretariesRouteImport } from './routes/_authenticated/admin/secretaries'
+import { Route as AuthenticatedAdminRatesRouteImport } from './routes/_authenticated/admin/rates'
+import { Route as AuthenticatedAdminMainMeterRouteImport } from './routes/_authenticated/admin/main-meter'
+import { Route as AuthenticatedAdminLocationsRouteImport } from './routes/_authenticated/admin/locations'
+import { Route as AuthenticatedAdminInvoicesRouteImport } from './routes/_authenticated/admin/invoices'
+import { Route as AuthenticatedAdminConsumersRouteImport } from './routes/_authenticated/admin/consumers'
+import { Route as AuthenticatedAdminAnalyticsRouteImport } from './routes/_authenticated/admin/analytics'
 import { Route as AuthenticatedAdminConsumersIdRouteImport } from './routes/_authenticated/admin/consumers.$id'
 
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const AuthRoute = AuthRouteImport.update({
+  id: '/auth',
+  path: '/auth',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
   id: '/_authenticated',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AuthRoute = AuthRouteImport.update({
-  id: '/auth',
-  path: '/auth',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
@@ -46,44 +46,32 @@ const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedSecretaryIndexRoute =
+  AuthenticatedSecretaryIndexRouteImport.update({
+    id: '/secretary/',
+    path: '/secretary/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedConsumerIndexRoute =
+  AuthenticatedConsumerIndexRouteImport.update({
+    id: '/consumer/',
+    path: '/consumer/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedAdminIndexRoute = AuthenticatedAdminIndexRouteImport.update({
   id: '/admin/',
   path: '/admin/',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
-const AuthenticatedAdminAnalyticsRoute =
-  AuthenticatedAdminAnalyticsRouteImport.update({
-    id: '/admin/analytics',
-    path: '/admin/analytics',
+const AuthenticatedSecretaryUsersRoute =
+  AuthenticatedSecretaryUsersRouteImport.update({
+    id: '/secretary/users',
+    path: '/secretary/users',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
-const AuthenticatedAdminConsumersRoute =
-  AuthenticatedAdminConsumersRouteImport.update({
-    id: '/admin/consumers',
-    path: '/admin/consumers',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
-const AuthenticatedAdminInvoicesRoute =
-  AuthenticatedAdminInvoicesRouteImport.update({
-    id: '/admin/invoices',
-    path: '/admin/invoices',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
-const AuthenticatedAdminLocationsRoute =
-  AuthenticatedAdminLocationsRouteImport.update({
-    id: '/admin/locations',
-    path: '/admin/locations',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
-const AuthenticatedAdminMainMeterRoute =
-  AuthenticatedAdminMainMeterRouteImport.update({
-    id: '/admin/main-meter',
-    path: '/admin/main-meter',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
-const AuthenticatedAdminRatesRoute = AuthenticatedAdminRatesRouteImport.update({
-  id: '/admin/rates',
-  path: '/admin/rates',
+const AuthenticatedAdminUsersRoute = AuthenticatedAdminUsersRouteImport.update({
+  id: '/admin/users',
+  path: '/admin/users',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedAdminSecretariesRoute =
@@ -92,27 +80,39 @@ const AuthenticatedAdminSecretariesRoute =
     path: '/admin/secretaries',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
-const AuthenticatedAdminUsersRoute = AuthenticatedAdminUsersRouteImport.update({
-  id: '/admin/users',
-  path: '/admin/users',
+const AuthenticatedAdminRatesRoute = AuthenticatedAdminRatesRouteImport.update({
+  id: '/admin/rates',
+  path: '/admin/rates',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
-const AuthenticatedConsumerIndexRoute =
-  AuthenticatedConsumerIndexRouteImport.update({
-    id: '/consumer/',
-    path: '/consumer/',
+const AuthenticatedAdminMainMeterRoute =
+  AuthenticatedAdminMainMeterRouteImport.update({
+    id: '/admin/main-meter',
+    path: '/admin/main-meter',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
-const AuthenticatedSecretaryIndexRoute =
-  AuthenticatedSecretaryIndexRouteImport.update({
-    id: '/secretary/',
-    path: '/secretary/',
+const AuthenticatedAdminLocationsRoute =
+  AuthenticatedAdminLocationsRouteImport.update({
+    id: '/admin/locations',
+    path: '/admin/locations',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
-const AuthenticatedSecretaryUsersRoute =
-  AuthenticatedSecretaryUsersRouteImport.update({
-    id: '/secretary/users',
-    path: '/secretary/users',
+const AuthenticatedAdminInvoicesRoute =
+  AuthenticatedAdminInvoicesRouteImport.update({
+    id: '/admin/invoices',
+    path: '/admin/invoices',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAdminConsumersRoute =
+  AuthenticatedAdminConsumersRouteImport.update({
+    id: '/admin/consumers',
+    path: '/admin/consumers',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAdminAnalyticsRoute =
+  AuthenticatedAdminAnalyticsRouteImport.update({
+    id: '/admin/analytics',
+    path: '/admin/analytics',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedAdminConsumersIdRoute =
@@ -244,11 +244,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+    '/auth': {
+      id: '/auth'
+      path: '/auth'
+      fullPath: '/auth'
+      preLoaderRoute: typeof AuthRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated': {
@@ -258,11 +258,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/auth': {
-      id: '/auth'
-      path: '/auth'
-      fullPath: '/auth'
-      preLoaderRoute: typeof AuthRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/dashboard': {
@@ -272,67 +272,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDashboardRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/_authenticated/admin/': {
-      id: '/_authenticated/admin/'
-      path: '/admin'
-      fullPath: '/admin/'
-      preLoaderRoute: typeof AuthenticatedAdminIndexRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/admin/analytics': {
-      id: '/_authenticated/admin/analytics'
-      path: '/admin/analytics'
-      fullPath: '/admin/analytics'
-      preLoaderRoute: typeof AuthenticatedAdminAnalyticsRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/admin/consumers': {
-      id: '/_authenticated/admin/consumers'
-      path: '/admin/consumers'
-      fullPath: '/admin/consumers'
-      preLoaderRoute: typeof AuthenticatedAdminConsumersRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/admin/invoices': {
-      id: '/_authenticated/admin/invoices'
-      path: '/admin/invoices'
-      fullPath: '/admin/invoices'
-      preLoaderRoute: typeof AuthenticatedAdminInvoicesRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/admin/locations': {
-      id: '/_authenticated/admin/locations'
-      path: '/admin/locations'
-      fullPath: '/admin/locations'
-      preLoaderRoute: typeof AuthenticatedAdminLocationsRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/admin/main-meter': {
-      id: '/_authenticated/admin/main-meter'
-      path: '/admin/main-meter'
-      fullPath: '/admin/main-meter'
-      preLoaderRoute: typeof AuthenticatedAdminMainMeterRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/admin/rates': {
-      id: '/_authenticated/admin/rates'
-      path: '/admin/rates'
-      fullPath: '/admin/rates'
-      preLoaderRoute: typeof AuthenticatedAdminRatesRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/admin/secretaries': {
-      id: '/_authenticated/admin/secretaries'
-      path: '/admin/secretaries'
-      fullPath: '/admin/secretaries'
-      preLoaderRoute: typeof AuthenticatedAdminSecretariesRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/admin/users': {
-      id: '/_authenticated/admin/users'
-      path: '/admin/users'
-      fullPath: '/admin/users'
-      preLoaderRoute: typeof AuthenticatedAdminUsersRouteImport
+    '/_authenticated/secretary/': {
+      id: '/_authenticated/secretary/'
+      path: '/secretary'
+      fullPath: '/secretary/'
+      preLoaderRoute: typeof AuthenticatedSecretaryIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/consumer/': {
@@ -342,11 +286,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedConsumerIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/_authenticated/secretary/': {
-      id: '/_authenticated/secretary/'
-      path: '/secretary'
-      fullPath: '/secretary/'
-      preLoaderRoute: typeof AuthenticatedSecretaryIndexRouteImport
+    '/_authenticated/admin/': {
+      id: '/_authenticated/admin/'
+      path: '/admin'
+      fullPath: '/admin/'
+      preLoaderRoute: typeof AuthenticatedAdminIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/secretary/users': {
@@ -354,6 +298,62 @@ declare module '@tanstack/react-router' {
       path: '/secretary/users'
       fullPath: '/secretary/users'
       preLoaderRoute: typeof AuthenticatedSecretaryUsersRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/admin/users': {
+      id: '/_authenticated/admin/users'
+      path: '/admin/users'
+      fullPath: '/admin/users'
+      preLoaderRoute: typeof AuthenticatedAdminUsersRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/admin/secretaries': {
+      id: '/_authenticated/admin/secretaries'
+      path: '/admin/secretaries'
+      fullPath: '/admin/secretaries'
+      preLoaderRoute: typeof AuthenticatedAdminSecretariesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/admin/rates': {
+      id: '/_authenticated/admin/rates'
+      path: '/admin/rates'
+      fullPath: '/admin/rates'
+      preLoaderRoute: typeof AuthenticatedAdminRatesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/admin/main-meter': {
+      id: '/_authenticated/admin/main-meter'
+      path: '/admin/main-meter'
+      fullPath: '/admin/main-meter'
+      preLoaderRoute: typeof AuthenticatedAdminMainMeterRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/admin/locations': {
+      id: '/_authenticated/admin/locations'
+      path: '/admin/locations'
+      fullPath: '/admin/locations'
+      preLoaderRoute: typeof AuthenticatedAdminLocationsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/admin/invoices': {
+      id: '/_authenticated/admin/invoices'
+      path: '/admin/invoices'
+      fullPath: '/admin/invoices'
+      preLoaderRoute: typeof AuthenticatedAdminInvoicesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/admin/consumers': {
+      id: '/_authenticated/admin/consumers'
+      path: '/admin/consumers'
+      fullPath: '/admin/consumers'
+      preLoaderRoute: typeof AuthenticatedAdminConsumersRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/admin/analytics': {
+      id: '/_authenticated/admin/analytics'
+      path: '/admin/analytics'
+      fullPath: '/admin/analytics'
+      preLoaderRoute: typeof AuthenticatedAdminAnalyticsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/admin/consumers/$id': {

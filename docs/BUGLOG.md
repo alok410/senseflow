@@ -1,5 +1,18 @@
 # Bug Log
 
+## [v1.0.20] – 2026-09-12 (15:45)
+
+### Fixed
+- Bug: Admin pages (e.g. /admin) showed "This page didn't load".
+  - Cause: TypeScript build failures — `localReadings` and `staffUsers` referenced but undefined, untyped profile `patch` objects rejected by generated types, and code reading a `profiles.phone_secondary` column that did not exist in the database.
+  - Fix: Replaced the stale identifiers, cast the update patches, added the `phone_secondary` column via migration and relaxed the fallback query typing in the admin users list.
+  - Files: src/routes/_authenticated/admin/index.tsx, src/routes/_authenticated/admin/users.tsx, src/lib/consumers.functions.ts, src/lib/secretaries.functions.ts, src/lib/admin.functions.ts, drizzle/migrations/0000_add_profiles_phone_secondary.sql
+
+- Bug: Landing page logged a hydration error and could blank out.
+  - Cause: A `<Button>` was nested inside the role card's `<button>`, which is invalid HTML nesting.
+  - Fix: Replaced the inner button with a styled `<span>`.
+  - Files: src/routes/index.tsx
+
 ## [v1.0.19] – 2026-08-22 (18:30)
 
 ### Fixed
