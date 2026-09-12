@@ -534,7 +534,7 @@ export const getAdminDashboardStats = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const token = process.env.SENSEFLOW_API_TOKEN;
     if (!token) return {
-      consumers: 0, secretaries: 0, locations: 0,
+      consumers: 0, totalConsumers: 0, secretaries: 0, totalSecretaries: 0, locations: 0,
       mainMeter: { available: false, todaysUsageL: 0, thisMonthL: 0, totalUsageL: 0, lastReadingAt: null },
       flowRate: 0, totalConsumptionL: 0, trend: [], leaders: [],
     };
@@ -707,8 +707,10 @@ export const getAdminDashboardStats = createServerFn({ method: "POST" })
     });
 
     return {
-      consumers: details.length,
+      consumers: details.length,          // has device_id — for analytics / leaderboard
+      totalConsumers: consumerIds.length, // all users with consumer role — for the stat card
       secretaries: secretaryCount,
+      totalSecretaries: (secretaryRolesRes.data ?? []).length,
       locations: locationsRes.count ?? 0,
       mainMeter: {
         available: mainInSet && (!!mainLatest || mainHistory.length > 0),

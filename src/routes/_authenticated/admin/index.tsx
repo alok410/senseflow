@@ -141,9 +141,24 @@ function AdminDashboard() {
   const live = liveStats.data;
   const liveTrend = live?.trend ?? [];
   const liveLeaders = live?.leaders ?? [];
+
+  // True role counts from server (all users with the role, not just device-holders)
+  const totalConsumers = live?.totalConsumers ?? 0;
+  const totalSecretaries = live?.totalSecretaries ?? secretaries.data ?? 0;
+
+  // When a location filter is active, scope the consumer count to that location
+  const scopedConsumerCount = locId === ALL
+    ? totalConsumers
+    : filteredConsumers.length || (live?.consumers ?? 0);
+
+  // Secretaries: use location-scoped count when filtering, otherwise total
+  const scopedSecretaryCount = locId === ALL
+    ? totalSecretaries
+    : (secretaries.data ?? (live?.secretaries ?? 0));
+
   const s = {
-    consumers: filteredConsumers.length,
-    secretaries: secretaries.data ?? (live?.secretaries ?? 0),
+    consumers: scopedConsumerCount,
+    secretaries: scopedSecretaryCount,
     mainMeter: live?.mainMeter ?? { todaysUsageL: 0, thisMonthL: 0, totalUsageL: 0 },
     flowRate: live?.flowRate ?? 0,
     totalConsumptionL: live?.totalConsumptionL ?? 0,
