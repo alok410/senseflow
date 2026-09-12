@@ -17,7 +17,7 @@ export const fetchAndStoreLatestReading = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     // Auth is temporarily disabled — anyone can trigger a reading fetch.
     const token = process.env.SENSEFLOW_API_TOKEN;
-    if (!token) throw new Error("SENSEFLOW_API_TOKEN not configured");
+    if (!token) throw new Error("SENSEFLOW_API_TOKEN not configured — add it to .env");
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
@@ -117,7 +117,11 @@ export const getConsumerDashboardStats = createServerFn({ method: "POST" })
   }).parse(d))
   .handler(async ({ data }) => {
     const token = process.env.SENSEFLOW_API_TOKEN;
-    if (!token) throw new Error("SENSEFLOW_API_TOKEN not configured");
+    if (!token) return {
+      device_id: null, serial_number: null, block_id: null, latest: null,
+      totalUsageL: 0, todaysUsageL: 0, thisMonthL: 0, rangeConsumptionL: 0,
+      trend: [], history: [],
+    };
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     const { data: details, error: dErr } = await supabaseAdmin
@@ -208,7 +212,11 @@ export const getMainMeterDashboardStats = createServerFn({ method: "POST" })
   }).parse(d))
   .handler(async ({ data }) => {
     const token = process.env.SENSEFLOW_API_TOKEN;
-    if (!token) throw new Error("SENSEFLOW_API_TOKEN not configured");
+    if (!token) return {
+      device_id: MAIN_METER_DEVICE, serial_number: null, latest: null,
+      flowRate: 0, totalUsageL: 0, todaysUsageL: 0, thisMonthL: 0,
+      rangeConsumptionL: 0, trend: [], history: [],
+    };
 
     const device = MAIN_METER_DEVICE;
     const todayStr = new Date().toISOString().slice(0, 10);
@@ -525,7 +533,11 @@ export const getAdminDashboardStats = createServerFn({ method: "POST" })
   }).parse(d))
   .handler(async ({ data }) => {
     const token = process.env.SENSEFLOW_API_TOKEN;
-    if (!token) throw new Error("SENSEFLOW_API_TOKEN not configured");
+    if (!token) return {
+      consumers: 0, secretaries: 0, locations: 0,
+      mainMeter: { available: false, todaysUsageL: 0, thisMonthL: 0, totalUsageL: 0, lastReadingAt: null },
+      flowRate: 0, totalConsumptionL: 0, trend: [], leaders: [],
+    };
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     const [consumerRolesRes, secretaryRolesRes, locationsRes] = await Promise.all([
@@ -723,7 +735,7 @@ export const getSecretaryDashboardStats = createServerFn({ method: "POST" })
   }).parse(d))
   .handler(async ({ data }) => {
     const token = process.env.SENSEFLOW_API_TOKEN;
-    if (!token) throw new Error("SENSEFLOW_API_TOKEN not configured");
+    if (!token) return { locationId: null, locationName: "", consumers: [], usageByConsumer: {}, trend: [], totalUsageL: 0 };
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
     const { data: sl } = await supabaseAdmin

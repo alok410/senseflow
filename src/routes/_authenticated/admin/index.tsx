@@ -115,51 +115,6 @@ function AdminDashboard() {
     },
   });
 
-  const localReadings = useQuery({
-    queryKey: ["admin-dashboard-local-readings", start, end, locId, userId, topLimit, consumers.data?.map((c) => c.id).join(",")],
-    queryFn: async () => {
-      const filtered = (consumers.data || []).filter((c) =>
-        (locId === ALL || c.locationId === locId) && (userId === ALL || c.id === userId),
-      );
-      const ids = filtered.map((c) => c.id);
-      if (!ids.length) return { trend: [], leaders: [], totalConsumptionL: 0, flowRate: 0 };
-      const { data, error } = await supabase
-        .from("meter_readings")
-        .select("consumer_id, consumption, reading_date, flow_rate")
-        .in("consumer_id", ids)
-        .gte("reading_date", `${start}T00:00:00`)
-        .lte("reading_date", `${end}T23:59:59`)
-        .order("reading_date", { ascending: true });
-      if (error) throw error;
-      const byId = new Map(filtered.map((c) => [c.id, c]));
-      const byDay = new Map<string, number>();
-      const byUser = new Map<string, number>();
-      filtered.forEach((c) => byUser.set(c.id, 0));
-      let flowRate = 0;
-      for (const row of data || []) {
-        const day = String(row.reading_date).slice(0, 10);
-        const litres = Math.max(0, Number(row.consumption || 0)) * 1000;
-        byDay.set(day, (byDay.get(day) || 0) + litres);
-        byUser.set(row.consumer_id, (byUser.get(row.consumer_id) || 0) + litres);
-        if (row.flow_rate != null) flowRate = Number(row.flow_rate) || flowRate;
-      }
-      const trend = Array.from(byDay.entries()).map(([date, consumption]) => ({ date, consumption: Math.round(consumption) }));
-      const leaders = Array.from(byUser.entries())
-        .map(([id, consumption]) => {
-          const c = byId.get(id);
-          return { id, name: c ? `${c.block ? `${c.block} · ` : ""}${c.name.replace(/^.*? · /, "")}` : id, device_id: c?.device || "", consumption: Math.round(consumption) };
-        })
-        .sort((a, b) => b.consumption - a.consumption);
-      return {
-        trend,
-        leaders,
-        totalConsumptionL: Math.round(Array.from(byDay.values()).reduce((sum, v) => sum + v, 0)),
-        flowRate,
-      };
-    },
-    enabled: !!consumers.data,
-  });
-
   const liveStats = useQuery({
     queryKey: ["admin-dashboard-live-stats", start, end, locId, userId, topLimit],
     queryFn: () => getLiveStats({
@@ -182,17 +137,18 @@ function AdminDashboard() {
   const filteredConsumers = (consumers.data || []).filter((c) =>
     (locId === ALL || c.locationId === locId) && (userId === ALL || c.id === userId),
   );
+
   const live = liveStats.data;
   const liveTrend = live?.trend ?? [];
   const liveLeaders = live?.leaders ?? [];
   const s = {
     consumers: filteredConsumers.length,
-    secretaries: secretaries.data ?? 0,
+    secretaries: secretaries.data ?? (live?.secretaries ?? 0),
     mainMeter: live?.mainMeter ?? { todaysUsageL: 0, thisMonthL: 0, totalUsageL: 0 },
-    flowRate: live?.flowRate ?? localReadings.data?.flowRate ?? 0,
-    totalConsumptionL: live?.totalConsumptionL ?? localReadings.data?.totalConsumptionL ?? 0,
-    trend: liveTrend.length ? liveTrend : (localReadings.data?.trend ?? []),
-    leaders: liveLeaders.length ? liveLeaders : (localReadings.data?.leaders ?? []),
+    flowRate: live?.flowRate ?? 0,
+    totalConsumptionL: live?.totalConsumptionL ?? 0,
+    trend: liveTrend,
+    leaders: liveLeaders,
   };
   const trend = (s?.trend || []).map((t) => ({ date: format(new Date(t.date), "MMM d"), consumption: t.consumption }));
   const leaders = s?.leaders || [];
