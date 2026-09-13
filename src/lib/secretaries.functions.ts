@@ -146,3 +146,54 @@ export const deleteSecretary = createServerFn({ method: "POST" })
     }
     return { ok: true };
   });
+
+// ---- List all secretaries (uses supabaseAdmin to bypass RLS) ----
+
+export const listSecretaries = createServerFn({ method: "GET" }).handler(async () => {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+  // Get all user IDs that have the secretary role OR have a secretary_locations entry
+  const [{ data: roles }, { data: secLocs }] = await Promise.all([
+    supabaseAdmin.from("user_roles").select("user_id").eq("role", "secretary"),
+    supabaseAdmin.from("secretary_locations").select("secretary_id"),
+  ]);
+
+  const ids = Array.from(new Set([
+    ...(roles || []).map((r) => r.user_id),
+    ...(secLocs || []).map((sl) => sl.secretary_id),
+  ]));
+
+  if (!ids.length) return [];
+
+  const [{ data: profiles }, { data: secretaryLocations }] = await Promise.all([
+    supabaseAdmin
+      .from("profiles")
+      .select("id, full_name, phone, email, is_active, created_at")
+      .in("id", ids)
+      .order("created_at", { ascending: false }),
+    supabaseAdmin
+      .from("secretary_locations")
+      .select("secretary_id, location_id")
+      .in("secretary_id", ids),
+  ]);
+
+  const locMap = new Map<string, { location_id: string }[]>();
+  (secretaryLocations || []).forEach((sl) => {
+    const list = locMap.get(sl.secretary_id) || [];
+    list.push({ location_id: sl.location_id });
+    locMap.set(sl.secretary_id, list);
+  });
+
+  // Only return users who actually have the secretary role (not just secretary_locations orphans)
+  const secretaryIdSet = new Set((roles || []).map((r) => r.user_id));
+  return (profiles || [])
+    .filter((p) => secretaryIdSet.has(p.id))
+    .map((p) => ({
+      id: p.id,
+      full_name: p.full_name,
+      phone: p.phone,
+      email: p.email,
+      is_active: p.is_active,
+      secretary_locations: locMap.get(p.id) || [],
+    }));
+});

@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -15,7 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useSession, useMyProfile } from "@/hooks/use-session";
-import { createSecretary, updateSecretary, deleteSecretary } from "@/lib/secretaries.functions";
+import { createSecretary, updateSecretary, deleteSecretary, listSecretaries } from "@/lib/secretaries.functions";
 import { ADMIN_NAV } from "@/lib/nav";
 import { AdminTabNav } from "@/components/AdminTabNav";
 
@@ -35,6 +36,7 @@ function AdminSecretaries() {
   const { user } = useSession();
   const { data: profile } = useMyProfile(user);
   const qc = useQueryClient();
+  const getSecretariesFn = useServerFn(listSecretaries);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Row | null>(null);
   const [form, setForm] = useState<{ fullName: string; phone: string; email: string; locationId: string }>(
@@ -56,46 +58,7 @@ function AdminSecretaries() {
 
   const list = useQuery({
     queryKey: ["admin-secretaries"],
-    queryFn: async () => {
-      const [{ data: roles, error: rolesError }, { data: secLocs, error: secLocsError }] = await Promise.all([
-        supabase.from("user_roles").select("user_id").eq("role", "secretary"),
-        supabase.from("secretary_locations").select("secretary_id"),
-      ]);
-      if (rolesError) throw rolesError;
-      if (secLocsError) throw secLocsError;
-      const ids = Array.from(new Set([
-        ...(roles || []).map((r) => r.user_id),
-        ...(secLocs || []).map((sl) => sl.secretary_id),
-      ]));
-      if (!ids.length) return [] as Row[];
-      const [{ data: profiles, error }, { data: secretaryLocations, error: locationError }] = await Promise.all([
-        supabase
-        .from("profiles")
-        .select("id, full_name, phone, email, is_active, created_at")
-        .in("id", ids)
-        .order("created_at", { ascending: false }),
-        supabase
-          .from("secretary_locations")
-          .select("secretary_id, location_id")
-          .in("secretary_id", ids),
-      ]);
-      if (error) throw error;
-      if (locationError) throw locationError;
-      const locMap = new Map<string, { location_id: string }[]>();
-      (secretaryLocations || []).forEach((sl) => {
-        const list = locMap.get(sl.secretary_id) || [];
-        list.push({ location_id: sl.location_id });
-        locMap.set(sl.secretary_id, list);
-      });
-      return (profiles || []).map((p) => ({
-        id: p.id,
-        full_name: p.full_name,
-        phone: p.phone,
-        email: p.email,
-        is_active: p.is_active,
-        secretary_locations: locMap.get(p.id) || [],
-      })) as Row[];
-    },
+    queryFn: async () => (await getSecretariesFn()) as Row[],
   });
 
   const createMut = useMutation({
