@@ -648,7 +648,10 @@ export const getAdminDashboardStats = createServerFn({ method: "POST" })
     const needsMonthWideHistory = !data.start.startsWith(monthPrefix) || data.start > `${monthPrefix}-01`;
 
     // Keep dashboard values partial and responsive: one slow sub-meter must not zero the main meter.
-    const [mainHistory, mainLatest, monthWideHistory, analyticsHistories] = await Promise.all([
+    // When today is in range, also fetch /latest for each sub-meter to get intraday consumption
+    // (the /history API only has completed-day rows, so today's intraday data needs /latest).
+    const todayInRange = data.end >= todayStr;
+    const [mainHistory, mainLatest, monthWideHistory, analyticsHistories, analyticsLatest] = await Promise.all([
       withDeadline(sfHistory(MAIN_METER_DEVICE, startIso, endIso, token), [] as HistoryDay[], 35000),
       withDeadline(sfLatest(MAIN_METER_DEVICE, token), null as LatestApi | null, 35000),
       needsMonthWideHistory
@@ -659,9 +662,26 @@ export const getAdminDashboardStats = createServerFn({ method: "POST" })
           )
         : Promise.resolve([] as HistoryDay[]),
       mapWithConcurrency(analyticsDevices, 5, (d) => sfHistory(d, startIso, endIso, token)),
+      // Fetch /latest per sub-meter ONLY when today is in the requested range
+      todayInRange
+        ? mapWithConcurrency(analyticsDevices, 5, (d) =>
+            withDeadline(sfLatest(d, token), null as LatestApi | null, 8000))
+        : Promise.resolve(analyticsDevices.map(() => null as LatestApi | null)),
     ] as const);
 
-    // Main meter overview (values in kilolitres -> convert to litres).
+    // Helper: estimate intraday usage for a device given its history and /latest reading
+    function intradayKl(days: HistoryDay[], latest: LatestApi | null): number {
+      if (!latest?.meter_reading) return 0;
+      // If history already has today's row, no estimate needed
+      if (days.some((d) => d.reading_date === todayStr)) return 0;
+      const series = dailyConsumptionSeries(days);
+      const lastKnown = series.at(-1);
+      const latestVal = Number(latest.meter_reading);
+      if (isNaN(latestVal) || !lastKnown || lastKnown.closing <= 0 || lastKnown.date >= todayStr) return 0;
+      return Math.max(0, latestVal - lastKnown.closing);
+    }
+
+    // Main meter overview (values in kilolitres → convert to litres).
     // Reset-/gap-aware series so a device swap or missing days do not skew totals.
     let todaysUsageKl = dailyConsumptionSeries(mainHistory).find((d) => d.date === todayStr)?.consumption ?? 0;
     let thisMonthKl = sumDailyConsumption(mainHistory.filter((d) => d.reading_date.startsWith(monthPrefix)));
@@ -703,19 +723,30 @@ export const getAdminDashboardStats = createServerFn({ method: "POST" })
     const flowRate = Number(mainLatest?.flow_rate || 0);
 
     // Daily consumption trend (sum across analytics devices per day),
-    // reset-/gap-aware per device.
+    // reset-/gap-aware per device. Also adds intraday estimate for today.
     const byDay = new Map<string, number>();
     for (const days of analyticsHistories) {
       for (const d of dailyConsumptionSeries(days)) {
         byDay.set(d.date, (byDay.get(d.date) || 0) + d.consumption);
       }
     }
+    // Patch today's intraday estimate into trend
+    if (todayInRange) {
+      for (let i = 0; i < analyticsDevices.length; i++) {
+        const est = intradayKl(analyticsHistories[i], analyticsLatest[i]);
+        if (est > 0) byDay.set(todayStr, (byDay.get(todayStr) || 0) + est);
+      }
+    }
     const trend = Array.from(byDay.entries())
       .sort((a, b) => a[0].localeCompare(b[0]))
       .map(([date, kl]) => ({ date, consumption: Math.round(kl * 1000) }));
     const totalConsumptionL = Math.round(
-      analyticsHistories.reduce((s, days) => s + sumDailyConsumption(days), 0) * 1000,
+      (analyticsHistories.reduce((s, days) => s + sumDailyConsumption(days), 0) +
+        (todayInRange
+          ? analyticsDevices.reduce((s, _, i) => s + intradayKl(analyticsHistories[i], analyticsLatest[i]), 0)
+          : 0)) * 1000,
     );
+
 
     // Leaderboard (all consumers in range). Look detail up BY DEVICE (not by index)
     // so it can never desync from analyticsDevices if the filter changes later.
@@ -727,7 +758,9 @@ export const getAdminDashboardStats = createServerFn({ method: "POST" })
       }
     });
     analyticsDevices.forEach((dev, i) => {
-      const total = Math.round(sumDailyConsumption(analyticsHistories[i]) * 1000);
+      const historyTotal = Math.round(sumDailyConsumption(analyticsHistories[i]) * 1000);
+      const intradayTotal = todayInRange ? Math.round(intradayKl(analyticsHistories[i], analyticsLatest[i]) * 1000) : 0;
+      const total = historyTotal + intradayTotal;
       const existing = groupedByDevice.get(dev);
       if (existing) {
         existing.total_l += total;
