@@ -249,7 +249,23 @@ export const getMainMeterDashboardStats = createServerFn({ method: "POST" })
     const todaySeriesRow =
       dailyConsumptionSeries(monthHistory).find((d) => d.date === todayStr)
       ?? rangeSeries.find((d) => d.date === todayStr);
-    const todaysUsageL = todaySeriesRow ? Math.round(todaySeriesRow.consumption * 1000) : 0;
+    let todaysUsageL = todaySeriesRow ? Math.round(todaySeriesRow.consumption * 1000) : 0;
+
+    // Fallback: /history only has completed days. Estimate intraday usage from
+    // latest.meter_reading minus the most recent closing reading in history.
+    if (!todaysUsageL && latest?.meter_reading != null) {
+      const combinedSeries = dailyConsumptionSeries(
+        Array.from(new Map([...rangeHistory, ...monthHistory].map((d) => [d.reading_date, d])).values()),
+      );
+      const latestReading = Number(latest.meter_reading);
+      if (!isNaN(latestReading) && combinedSeries.length > 0) {
+        const lastKnown = combinedSeries.at(-1)!;
+        if (lastKnown.date < todayStr && lastKnown.closing > 0) {
+          todaysUsageL = Math.round(Math.max(0, latestReading - lastKnown.closing) * 1000);
+        }
+      }
+    }
+
     const combinedHistory = Array.from(
       new Map([...rangeHistory, ...monthHistory].map((d) => [d.reading_date, d])).values(),
     );
@@ -657,6 +673,25 @@ export const getAdminDashboardStats = createServerFn({ method: "POST" })
         todaysUsageKl = dailyConsumptionSeries(monthWideHistory).find((d) => d.date === todayStr)?.consumption ?? 0;
       }
     }
+
+    // Fallback for today: /history only has COMPLETED days.
+    // If history has no row for today (day still in progress), estimate from
+    // latest.meter_reading minus the most recent closing reading in history.
+    if (!todaysUsageKl && mainLatest?.meter_reading != null) {
+      const allMainDays = Array.from(
+        new Map([...mainHistory, ...monthWideHistory].map((d) => [d.reading_date, d])).values(),
+      );
+      const series = dailyConsumptionSeries(allMainDays);
+      const latestReading = Number(mainLatest.meter_reading);
+      if (!isNaN(latestReading) && series.length > 0) {
+        const lastKnown = series.at(-1)!;
+        // Only use this estimate when the last history row is before today
+        if (lastKnown.date < todayStr && lastKnown.closing > 0) {
+          todaysUsageKl = Math.max(0, latestReading - lastKnown.closing);
+        }
+      }
+    }
+
     const sortedMainHistory = mainHistory.slice().sort((a, b) => a.reading_date.localeCompare(b.reading_date));
     const latestMainHistory = sortedMainHistory.at(-1);
     // Reset-aware lifetime usage across the widest main-meter history we fetched
