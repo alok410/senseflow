@@ -5,7 +5,6 @@ export function AdminTabNav() {
   const tabs = [
     { label: "Users", href: "/admin/users" },
     { label: "Consumers", href: "/admin/consumers" },
-    { label: "Secretaries", href: "/admin/secretaries" },
     { label: "Locations", href: "/admin/locations" },
   ];
 

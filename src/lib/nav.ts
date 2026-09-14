@@ -4,7 +4,6 @@ export const ADMIN_NAV: NavItem[] = [
   { label: "Dashboard", href: "/admin" },
   { label: "Users", href: "/admin/users" },
   { label: "Consumers", href: "/admin/consumers" },
-  { label: "Secretaries", href: "/admin/secretaries" },
   { label: "Locations", href: "/admin/locations" },
   { label: "Rates", href: "/admin/rates" },
   { label: "Invoices", href: "/admin/invoices" },
