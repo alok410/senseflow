@@ -13,6 +13,7 @@ export const ADMIN_NAV: NavItem[] = [
 export const SECRETARY_NAV: NavItem[] = [
   { label: "Dashboard", href: "/secretary" },
   { label: "My consumers", href: "/secretary/users" },
+  { label: "Invoices", href: "/secretary/invoices" },
 ];
 
 export const CONSUMER_NAV: NavItem[] = [

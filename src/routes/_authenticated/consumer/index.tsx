@@ -25,7 +25,9 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
 import { useSession, useMyProfile } from "@/hooks/use-session";
+import { useServerFn } from "@tanstack/react-start";
 import { fetchAndStoreLatestReading, getConsumerDashboardStats } from "@/lib/meter.functions";
+import { payInvoiceFromPrepaid, rechargeBalance, markInvoicePaid } from "@/lib/invoices.functions";
 import { CONSUMER_NAV } from "@/lib/nav";
 
 export const Route = createFileRoute("/_authenticated/consumer/")({
@@ -52,6 +54,10 @@ function ConsumerDashboard() {
   const [rechargeAmount, setRechargeAmount] = useState("500");
   const [payMethod, setPayMethod] = useState<"online" | "prepaid">("online");
 
+  const payInvoiceFromPrepaidFn = useServerFn(payInvoiceFromPrepaid);
+  const rechargeBalanceFn = useServerFn(rechargeBalance);
+  const markInvoicePaidFn = useServerFn(markInvoicePaid);
+
   const refreshMut = useMutation({
     mutationFn: async () => {
       if (!user) throw new Error("No session");
@@ -63,6 +69,37 @@ function ConsumerDashboard() {
       qc.invalidateQueries({ queryKey: ["consumer-readings"] });
     },
     onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "Failed"),
+  });
+
+  const payMut = useMutation({
+    mutationFn: async () => {
+      if (!selectedInvoice || !user) throw new Error("No invoice selected");
+      if (payMethod === "prepaid") {
+        return payInvoiceFromPrepaidFn({ data: { invoiceId: selectedInvoice, consumerId: user.id } });
+      }
+      return markInvoicePaidFn({ data: { invoiceId: selectedInvoice, method: "online" } });
+    },
+    onSuccess: (r: any) => {
+      toast.success(r.alreadyPaid ? "Already paid." : "Payment recorded!");
+      setPayOpen(false);
+      qc.invalidateQueries({ queryKey: ["consumer-dashboard"] });
+    },
+    onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "Payment failed"),
+  });
+
+  const rechargeMut = useMutation({
+    mutationFn: async () => {
+      if (!user) throw new Error("No session");
+      const amount = parseFloat(rechargeAmount);
+      if (isNaN(amount) || amount <= 0) throw new Error("Enter a valid amount.");
+      return rechargeBalanceFn({ data: { consumerId: user.id, amount, method: "online" } });
+    },
+    onSuccess: (r: any) => {
+      toast.success(`Recharged ₹${Number(rechargeAmount).toLocaleString("en-IN")}! New balance: ₹${Number(r.newBalance).toFixed(2)}`);
+      setRechargeOpen(false);
+      qc.invalidateQueries({ queryKey: ["consumer-dashboard"] });
+    },
+    onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "Recharge failed"),
   });
 
   const meta = useQuery({
@@ -357,8 +394,8 @@ function ConsumerDashboard() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setPayOpen(false)}>Cancel</Button>
             <Button
-              disabled={payMethod === "prepaid" && !canPayWithPrepaid}
-              onClick={() => { toast.info("Payment integration coming soon."); setPayOpen(false); }}
+              onClick={() => { if (payMethod === "prepaid" && !canPayWithPrepaid) return; payMut.mutate(); }}
+              disabled={payMut.isPending || (payMethod === "prepaid" && !canPayWithPrepaid)}
             >
               {payMethod === "prepaid" ? "Pay from balance" : "Pay now"}
             </Button>
@@ -382,7 +419,10 @@ function ConsumerDashboard() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setRechargeOpen(false)}>Cancel</Button>
-            <Button onClick={() => { toast.info("Recharge gateway coming soon."); setRechargeOpen(false); }}>Recharge ₹{rechargeAmount}</Button>
+            <Button onClick={() => rechargeMut.mutate()} disabled={rechargeMut.isPending}>
+              {rechargeMut.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Recharge ₹{rechargeAmount}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
