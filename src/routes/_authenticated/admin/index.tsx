@@ -15,7 +15,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useSession, useMyProfile } from "@/hooks/use-session";
 import { ADMIN_NAV } from "@/lib/nav";
 import { getAdminDashboardStats } from "@/lib/meter.functions";
-import { seedDemoConsumers } from "@/lib/consumers.functions";
+import { seedDemoConsumers, getAdminConsumersList } from "@/lib/consumers.functions";
 import { WaterDropLoader } from "@/components/WaterDropLoader";
 
 export const Route = createFileRoute("/_authenticated/admin/")({
@@ -36,6 +36,7 @@ function AdminDashboard() {
   const { user } = useSession();
   const { data: profile } = useMyProfile(user);
   const getLiveStats = useServerFn(getAdminDashboardStats);
+  const getConsumersFn = useServerFn(getAdminConsumersList);
   const [preset, setPreset] = useState<0 | 1 | 7 | 15 | 30>(30);
   const [start, setStart] = useState<string>(format(subDays(new Date(), 30), "yyyy-MM-dd"));
   const [end, setEnd] = useState<string>(format(new Date(), "yyyy-MM-dd"));
@@ -63,40 +64,27 @@ function AdminDashboard() {
   const consumers = useQuery({
     queryKey: ["admin-dashboard-consumers"],
     queryFn: async () => {
-      let { data: roles, error: roleError } = await supabase.from("user_roles").select("user_id, role").eq("role", "consumer");
-      if (roleError) throw roleError;
-
-      let ids = Array.from(new Set((roles || []).map((r) => r.user_id)));
-      if (!ids.length) {
-        await seedDemoConsumers({ data: {} }).catch(() => null);
-        const refetch = await supabase.from("user_roles").select("user_id, role").eq("role", "consumer");
-        ids = Array.from(new Set((refetch.data || []).map((r) => r.user_id)));
-      }
-      if (!ids.length) return [] as DashboardConsumerRow[];
-      const [{ data: profiles, error: profileError }, { data: details, error: detailsError }] = await Promise.all([
-        supabase.from("profiles").select("id, full_name, phone, is_active").in("id", ids),
-        supabase.from("consumer_details").select("user_id, device_id, block_id, location_id").in("user_id", ids).not("device_id", "is", null),
-      ]);
-      if (profileError) throw profileError;
-      if (detailsError) throw detailsError;
-      const pMap = new Map((profiles || []).map((p) => [p.id, p]));
+      const list = (await getConsumersFn()) as any[];
       const byKey = new Map<string, DashboardConsumerRow>();
-      (details || []).forEach((d) => {
-        const p = pMap.get(d.user_id);
-        if (!p || p.is_active === false || !d.device_id || d.device_id === "USFL_FL7053" || d.block_id === "00") return;
-        const key = `${d.device_id}|${d.block_id ?? ""}`;
-        if (!byKey.has(key)) {
-          byKey.set(key, {
-            id: d.user_id,
-            name: `${d.block_id ? `${d.block_id} · ` : ""}${p.full_name || p.phone || d.device_id}`,
-            locationId: d.location_id,
-            block: d.block_id || "",
-            device: d.device_id,
-          });
-        }
+      (list || []).forEach((c) => {
+        const cd = c.consumer_details;
+        if (c.is_active === false) return;
+        if (cd?.device_id === "USFL_FL7053" || cd?.block_id === "00") return;
+
+        const displayName = `${cd?.block_id ? `${cd.block_id} · ` : ""}${c.full_name || c.phone || cd?.device_id || "Consumer"}`;
+        byKey.set(c.id, {
+          id: c.id,
+          name: displayName,
+          locationId: cd?.location_id ?? null,
+          block: cd?.block_id || "",
+          device: cd?.device_id || "",
+        });
       });
-      return Array.from(byKey.values())
-        .sort((a, b) => a.block.localeCompare(b.block, undefined, { numeric: true }) || a.name.localeCompare(b.name));
+      return Array.from(byKey.values()).sort(
+        (a, b) =>
+          a.block.localeCompare(b.block, undefined, { numeric: true }) ||
+          a.name.localeCompare(b.name)
+      );
     },
   });
 
@@ -292,9 +280,9 @@ function AdminDashboard() {
           </SelectContent>
         </Select>
         <Select value={userId} onValueChange={setUserId}>
-          <SelectTrigger className="w-56"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="w-56"><SelectValue placeholder="All consumers" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value={ALL}>All users</SelectItem>
+            <SelectItem value={ALL}>All consumers</SelectItem>
             {usersForDropdown.map((u) => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
           </SelectContent>
         </Select>
