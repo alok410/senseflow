@@ -35,6 +35,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import {
   Table,
   TableBody,
@@ -311,39 +312,44 @@ function ConsumerAnalysis() {
                   )}
                 </div>
 
-                <div className="flex items-center gap-2 pt-1">
-                  {isValveClosed ? (
-                    <Button
-                      size="sm"
-                      className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs"
-                      onClick={() => {
-                        setValveTargetAction("on");
+                <div className="flex items-center justify-between p-2.5 rounded-lg bg-background border shadow-xs">
+                  <div className="flex items-center gap-2.5">
+                    <Switch
+                      id="consumer-valve-switch"
+                      checked={!isValveClosed}
+                      onCheckedChange={(checked) => {
+                        setValveTargetAction(checked ? "on" : "off");
                         setValveDialogOpen(true);
                       }}
+                      className={!isValveClosed ? "data-[state=checked]:bg-emerald-600" : ""}
+                    />
+                    <label
+                      htmlFor="consumer-valve-switch"
+                      className={`text-xs font-semibold flex items-center gap-1 cursor-pointer select-none ${
+                        !isValveClosed ? "text-emerald-600" : "text-red-500"
+                      }`}
                     >
-                      <Droplets className="mr-1.5 h-3.5 w-3.5" /> Turn Valve ON
-                    </Button>
-                  ) : (
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      className="flex-1 text-xs"
-                      onClick={() => {
-                        setValveTargetAction("off");
-                        setValveDialogOpen(true);
-                      }}
-                    >
-                      <Power className="mr-1.5 h-3.5 w-3.5" /> Turn Valve OFF
-                    </Button>
-                  )}
+                      {!isValveClosed ? (
+                        <>
+                          <Droplets className="h-3.5 w-3.5 text-emerald-500" />
+                          <span>Supply ON</span>
+                        </>
+                      ) : (
+                        <>
+                          <Power className="h-3.5 w-3.5 text-red-500" />
+                          <span>Supply OFF</span>
+                        </>
+                      )}
+                    </label>
+                  </div>
                   <Button
                     size="sm"
                     variant="outline"
-                    className="text-xs"
+                    className="text-xs h-7 px-2"
                     onClick={() => setResetDialogOpen(true)}
                     title="Reset Hardware Logic"
                   >
-                    <RotateCcw className="h-3.5 w-3.5 text-blue-500" />
+                    <RotateCcw className="h-3 w-3 text-blue-500 mr-1" /> Reboot
                   </Button>
                 </div>
               </>

@@ -18,6 +18,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -227,92 +228,67 @@ function SecretaryUsers() {
                       <td className="px-4 py-3 font-mono text-xs font-semibold">{devId || "—"}</td>
                       <td className="px-4 py-3">
                         {devId ? (
-                          isClosed ? (
-                            <Badge
-                              variant="destructive"
-                              className="cursor-pointer gap-1"
-                              title={st?.lastActionReason || "Valve closed"}
-                              onClick={() =>
-                                setValveDialog({
-                                  open: true,
-                                  deviceId: devId,
-                                  targetName: c.profiles?.full_name || "Consumer",
-                                  currentStatus: "closed",
-                                  targetAction: "on",
-                                })
-                              }
-                            >
-                              <Power className="h-3 w-3" />
-                              Closed
-                            </Badge>
-                          ) : (
-                            <Badge
-                              className="bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer gap-1"
-                              title={st?.lastActionReason || "Valve open and running"}
-                              onClick={() =>
-                                setValveDialog({
-                                  open: true,
-                                  deviceId: devId,
-                                  targetName: c.profiles?.full_name || "Consumer",
-                                  currentStatus: "open",
-                                  targetAction: "off",
-                                })
-                              }
-                            >
-                              <Droplets className="h-3 w-3" />
-                              Open
-                            </Badge>
-                          )
-                        ) : (
-                          <Badge variant="outline" className="text-muted-foreground">
-                            No Device
-                          </Badge>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-xs">{c.locations?.name || "—"}</td>
-                      <td className="px-4 py-3 text-right whitespace-nowrap">
-                        {devId && (
-                          <>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className={
-                                isClosed
-                                  ? "text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10"
-                                  : "text-red-500 hover:text-red-600 hover:bg-red-500/10"
-                              }
-                              title={isClosed ? "Turn Valve ON" : "Turn Valve OFF"}
-                              onClick={() =>
+                          <div className="flex items-center gap-2">
+                            <Switch
+                              id={`sec-valve-switch-${c.user_id}`}
+                              checked={!isClosed}
+                              onCheckedChange={(checked) =>
                                 setValveDialog({
                                   open: true,
                                   deviceId: devId,
                                   targetName: c.profiles?.full_name || "Consumer",
                                   currentStatus: isClosed ? "closed" : "open",
-                                  targetAction: isClosed ? "on" : "off",
+                                  targetAction: checked ? "on" : "off",
                                 })
                               }
+                              className={
+                                !isClosed
+                                  ? "data-[state=checked]:bg-emerald-600"
+                                  : "data-[state=unchecked]:bg-slate-300 dark:data-[state=unchecked]:bg-slate-700"
+                              }
+                            />
+                            <label
+                              htmlFor={`sec-valve-switch-${c.user_id}`}
+                              className={`text-xs font-semibold flex items-center gap-1 cursor-pointer select-none ${
+                                !isClosed
+                                  ? "text-emerald-600 dark:text-emerald-400"
+                                  : "text-red-500 dark:text-red-400"
+                              }`}
                             >
-                              {isClosed ? (
-                                <Droplets className="h-3.5 w-3.5" />
+                              {!isClosed ? (
+                                <>
+                                  <Droplets className="h-3 w-3 text-emerald-500" />
+                                  <span>Open</span>
+                                </>
                               ) : (
-                                <Power className="h-3.5 w-3.5" />
+                                <>
+                                  <Power className="h-3 w-3 text-red-500" />
+                                  <span>Closed</span>
+                                </>
                               )}
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              title="Reset Hardware Logic"
-                              onClick={() =>
-                                setResetDialog({
-                                  open: true,
-                                  deviceId: devId,
-                                  targetName: c.profiles?.full_name || "Consumer",
-                                })
-                              }
-                            >
-                              <RotateCcw className="h-3.5 w-3.5 text-blue-500" />
-                            </Button>
-                          </>
+                            </label>
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground text-xs">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-xs">{c.locations?.name || "—"}</td>
+                      <td className="px-4 py-3 text-right whitespace-nowrap">
+                        {devId && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            title="Reset Hardware Logic"
+                            onClick={() =>
+                              setResetDialog({
+                                open: true,
+                                deviceId: devId,
+                                targetName: c.profiles?.full_name || "Consumer",
+                              })
+                            }
+                          >
+                            <RotateCcw className="h-3.5 w-3.5 text-blue-500" />
+                          </Button>
                         )}
 
                         <Button

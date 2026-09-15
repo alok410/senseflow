@@ -31,6 +31,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import {
   Table,
   TableBody,
@@ -172,31 +173,36 @@ function MainMeterDashboard() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            {isValveClosed ? (
-              <Button
-                size="sm"
-                className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-sm"
-                onClick={() => {
-                  setValveTargetAction("on");
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 p-1.5 px-3 rounded-lg bg-background border">
+              <Switch
+                id="main-meter-switch"
+                checked={!isValveClosed}
+                onCheckedChange={(checked) => {
+                  setValveTargetAction(checked ? "on" : "off");
                   setValveDialogOpen(true);
                 }}
+                className={!isValveClosed ? "data-[state=checked]:bg-emerald-600" : ""}
+              />
+              <label
+                htmlFor="main-meter-switch"
+                className={`text-xs font-semibold flex items-center gap-1 cursor-pointer select-none ${
+                  !isValveClosed ? "text-emerald-600" : "text-red-500"
+                }`}
               >
-                <Droplets className="mr-1.5 h-4 w-4" /> Open Main Valve (Restore Supply)
-              </Button>
-            ) : (
-              <Button
-                size="sm"
-                variant="destructive"
-                className="font-medium shadow-sm"
-                onClick={() => {
-                  setValveTargetAction("off");
-                  setValveDialogOpen(true);
-                }}
-              >
-                <Power className="mr-1.5 h-4 w-4" /> Emergency Shut OFF Main Valve
-              </Button>
-            )}
+                {!isValveClosed ? (
+                  <>
+                    <Droplets className="h-3.5 w-3.5 text-emerald-500" />
+                    <span>Inlet OPEN</span>
+                  </>
+                ) : (
+                  <>
+                    <Power className="h-3.5 w-3.5 text-red-500" />
+                    <span>Inlet CLOSED</span>
+                  </>
+                )}
+              </label>
+            </div>
 
             <Button
               size="sm"

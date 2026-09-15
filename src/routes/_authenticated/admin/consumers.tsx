@@ -26,6 +26,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -572,46 +573,48 @@ function AdminConsumersList() {
                       </td>
                       <td className="px-3 py-3">
                         {devId ? (
-                          isClosed ? (
-                            <Badge
-                              variant="destructive"
-                              className="cursor-pointer gap-1"
-                              title={st?.lastActionReason || "Valve closed"}
-                              onClick={() =>
+                          <div className="flex items-center gap-2">
+                            <Switch
+                              id={`valve-switch-${c.id}`}
+                              checked={!isClosed}
+                              onCheckedChange={(checked) =>
                                 setValveDialog({
                                   open: true,
                                   deviceId: devId,
                                   targetName: c.full_name || "Consumer",
-                                  currentStatus: "closed",
-                                  targetAction: "on",
+                                  currentStatus: isClosed ? "closed" : "open",
+                                  targetAction: checked ? "on" : "off",
                                 })
                               }
-                            >
-                              <Power className="h-3 w-3" />
-                              Closed
-                            </Badge>
-                          ) : (
-                            <Badge
-                              className="bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer gap-1"
-                              title={st?.lastActionReason || "Valve open and flowing"}
-                              onClick={() =>
-                                setValveDialog({
-                                  open: true,
-                                  deviceId: devId,
-                                  targetName: c.full_name || "Consumer",
-                                  currentStatus: "open",
-                                  targetAction: "off",
-                                })
+                              className={
+                                !isClosed
+                                  ? "data-[state=checked]:bg-emerald-600"
+                                  : "data-[state=unchecked]:bg-slate-300 dark:data-[state=unchecked]:bg-slate-700"
                               }
+                            />
+                            <label
+                              htmlFor={`valve-switch-${c.id}`}
+                              className={`text-xs font-semibold flex items-center gap-1 cursor-pointer select-none ${
+                                !isClosed
+                                  ? "text-emerald-600 dark:text-emerald-400"
+                                  : "text-red-500 dark:text-red-400"
+                              }`}
                             >
-                              <Droplets className="h-3 w-3" />
-                              Open
-                            </Badge>
-                          )
+                              {!isClosed ? (
+                                <>
+                                  <Droplets className="h-3 w-3 text-emerald-500" />
+                                  <span>Open</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Power className="h-3 w-3 text-red-500" />
+                                  <span>Closed</span>
+                                </>
+                              )}
+                            </label>
+                          </div>
                         ) : (
-                          <Badge variant="outline" className="text-muted-foreground">
-                            No Device
-                          </Badge>
+                          <span className="text-muted-foreground text-xs">—</span>
                         )}
                       </td>
                       <td className="px-3 py-3 text-xs">
@@ -629,49 +632,21 @@ function AdminConsumersList() {
                         )}
                       </td>
                       <td className="px-3 py-3 text-right whitespace-nowrap">
-                        {/* Device Valve Toggle Quick Button */}
                         {devId && (
-                          <>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className={
-                                isClosed
-                                  ? "text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10"
-                                  : "text-red-500 hover:text-red-600 hover:bg-red-500/10"
-                              }
-                              title={isClosed ? "Turn Valve ON" : "Turn Valve OFF"}
-                              onClick={() =>
-                                setValveDialog({
-                                  open: true,
-                                  deviceId: devId,
-                                  targetName: c.full_name || "Consumer",
-                                  currentStatus: isClosed ? "closed" : "open",
-                                  targetAction: isClosed ? "on" : "off",
-                                })
-                              }
-                            >
-                              {isClosed ? (
-                                <Droplets className="h-3.5 w-3.5" />
-                              ) : (
-                                <Power className="h-3.5 w-3.5" />
-                              )}
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              title="Reset Device Hardware"
-                              onClick={() =>
-                                setResetDialog({
-                                  open: true,
-                                  deviceId: devId,
-                                  targetName: c.full_name || "Consumer",
-                                })
-                              }
-                            >
-                              <RotateCcw className="h-3.5 w-3.5 text-blue-500" />
-                            </Button>
-                          </>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            title="Reset Device Hardware"
+                            onClick={() =>
+                              setResetDialog({
+                                open: true,
+                                deviceId: devId,
+                                targetName: c.full_name || "Consumer",
+                              })
+                            }
+                          >
+                            <RotateCcw className="h-3.5 w-3.5 text-blue-500" />
+                          </Button>
                         )}
 
                         <Link to="/admin/consumers/$id" params={{ id: c.id }}>
