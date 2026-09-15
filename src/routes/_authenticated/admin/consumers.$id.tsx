@@ -1,13 +1,33 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { format, parseISO, subDays } from "date-fns";
 import {
-  ArrowLeft, Gauge, IndianRupee, FileText, Wallet, Gift,
-  TrendingUp, BarChart3, Droplets, Clock,
+  ArrowLeft,
+  Gauge,
+  IndianRupee,
+  FileText,
+  Wallet,
+  Gift,
+  TrendingUp,
+  BarChart3,
+  Droplets,
+  Clock,
+  Power,
+  RotateCcw,
+  ShieldCheck,
+  AlertTriangle,
+  Radio,
 } from "lucide-react";
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
 } from "recharts";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { StatsCard } from "@/components/StatsCard";
@@ -16,14 +36,25 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
 } from "@/components/ui/table";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
 } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useSession, useMyProfile } from "@/hooks/use-session";
 import { getConsumerDashboardStats } from "@/lib/meter.functions";
+import { getDeviceStates, ValveStatus } from "@/lib/device-control.functions";
+import { ValveControlDialog } from "@/components/ValveControlDialog";
+import { ResetDeviceDialog } from "@/components/ResetDeviceDialog";
 import { ADMIN_NAV } from "@/lib/nav";
 
 export const Route = createFileRoute("/_authenticated/admin/consumers/$id")({
@@ -31,19 +62,27 @@ export const Route = createFileRoute("/_authenticated/admin/consumers/$id")({
 });
 
 type InvoiceRow = {
-  id: string; created_at: string; bill_period_start: string; bill_period_end: string;
-  consumption: number; free_consumption: number; chargeable_consumption: number;
-  rate_applied: number; amount: number; late_fee: number; total_amount: number;
-  due_date: string; status: string; paid_at: string | null;
+  id: string;
+  created_at: string;
+  bill_period_start: string;
+  bill_period_end: string;
+  consumption: number;
+  free_consumption: number;
+  chargeable_consumption: number;
+  rate_applied: number;
+  amount: number;
+  late_fee: number;
+  total_amount: number;
+  due_date: string;
+  status: string;
+  paid_at: string | null;
 };
 
-// Admin-facing, READ-ONLY analysis of a single consumer. Mirrors the consumer
-// dashboard's analytics + invoices, but without the consumer-only actions
-// (refresh reading, recharge, pay).
 function ConsumerAnalysis() {
   const { id } = Route.useParams();
   const { user } = useSession();
   const { data: adminProfile } = useMyProfile(user);
+  const qc = useQueryClient();
 
   const [quick, setQuick] = useState<7 | 15 | 30 | 0>(30);
   const [start, setStart] = useState<string>(format(subDays(new Date(), 30), "yyyy-MM-dd"));
@@ -56,16 +95,41 @@ function ConsumerAnalysis() {
 
   const [viewingInvoice, setViewingInvoice] = useState<InvoiceRow | null>(null);
 
-  // Consumer identity + account meta (invoices, balance, current rate)
+  // Device control dialogs
+  const [valveDialogOpen, setValveDialogOpen] = useState(false);
+  const [valveTargetAction, setValveTargetAction] = useState<"on" | "off">("off");
+  const [resetDialogOpen, setResetDialogOpen] = useState(false);
+
+  const getDeviceStatesFn = useServerFn(getDeviceStates);
+
+  // Consumer identity + account meta
   const meta = useQuery({
     queryKey: ["admin-consumer-meta", id],
     queryFn: async () => {
       const [profile, details, invoices, balance, rate] = await Promise.all([
-        supabase.from("profiles").select("id, full_name, phone, email, is_active").eq("id", id).maybeSingle(),
-        supabase.from("consumer_details").select("meter_id, serial_number, device_id, block_id, location_id, locations(name, code)").eq("user_id", id).maybeSingle(),
-        supabase.from("invoices").select("*").eq("consumer_id", id).order("created_at", { ascending: false }).limit(50),
+        supabase
+          .from("profiles")
+          .select("id, full_name, phone, email, is_active")
+          .eq("id", id)
+          .maybeSingle(),
+        supabase
+          .from("consumer_details")
+          .select("meter_id, serial_number, device_id, block_id, location_id, locations(name, code)")
+          .eq("user_id", id)
+          .maybeSingle(),
+        supabase
+          .from("invoices")
+          .select("*")
+          .eq("consumer_id", id)
+          .order("created_at", { ascending: false })
+          .limit(50),
         supabase.from("prepaid_balances").select("balance").eq("consumer_id", id).maybeSingle(),
-        supabase.from("water_rates").select("*").order("effective_from", { ascending: false }).limit(1).maybeSingle(),
+        supabase
+          .from("water_rates")
+          .select("*")
+          .order("effective_from", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
       ]);
       const invoiceRows = (invoices.data || []) as unknown as InvoiceRow[];
       const pending = invoiceRows.filter((i) => i.status !== "paid");
@@ -83,41 +147,32 @@ function ConsumerAnalysis() {
     },
   });
 
-  // Live Senseflow analytics for this consumer (reset-/gap-aware server fn)
+  const s = meta.data;
+  const cd = s?.details as any;
+  const deviceId = cd?.device_id as string | undefined;
+
+  // Device state (valve status, last actions)
+  const deviceStateQuery = useQuery({
+    queryKey: ["admin-consumer-device-state", deviceId],
+    queryFn: async () => (deviceId ? await getDeviceStatesFn({ data: { deviceIds: [deviceId] } }) : null),
+    enabled: !!deviceId,
+    refetchInterval: 20000,
+  });
+
+  const devRecord = deviceId ? deviceStateQuery.data?.[deviceId] : null;
+  const valveStatus: ValveStatus = devRecord?.valveStatus || "open";
+  const isValveClosed = valveStatus === "closed";
+
+  // Live Senseflow analytics
   const live = useQuery({
     queryKey: ["admin-consumer-live", id, start, end],
     queryFn: async () => getConsumerDashboardStats({ data: { consumerId: id, start, end } }),
   });
 
-  const s = meta.data;
-  const cd = s?.details as any;
   const latestReading = live.data?.latest;
-
   const thisMonthTotal = live.data?.thisMonthL ?? 0;
   const thisMonthChargeable = Math.max(0, thisMonthTotal - (s?.freeTier || 0));
   const thisMonthBill = thisMonthChargeable * (s?.ratePerLiter || 0);
-
-  const analysis = useMemo(() => {
-    const rows = live.data?.history || [];
-    if (!rows.length) return { total: 0, avg: 0, min: 0, max: 0, count: 0, chargeable: 0, bill: 0, proratedFree: 0 };
-    const c = rows.map((r) => Number(r.consumption || 0));
-    const total = c.reduce((a, b) => a + b, 0);
-    const free = s?.freeTier || 0;
-    const rate = s?.ratePerLiter || 0;
-    // Monthly free tier pro-rated to the selected range (estimate only).
-    const rangeDays = Math.max(
-      1,
-      Math.round((new Date(end).getTime() - new Date(start).getTime()) / 86_400_000) + 1,
-    );
-    const daysInMonth = new Date(new Date(end).getFullYear(), new Date(end).getMonth() + 1, 0).getDate();
-    const proratedFree = free * Math.min(1, rangeDays / daysInMonth);
-    const chargeable = Math.max(0, total - proratedFree);
-    return {
-      total, avg: Math.round(total / c.length),
-      min: Math.min(...c), max: Math.max(...c),
-      count: c.length, chargeable, bill: chargeable * rate, proratedFree: Math.round(proratedFree),
-    };
-  }, [live.data, s, start, end]);
 
   const chartData = (live.data?.trend || []).map((r) => ({
     date: r.date,
@@ -126,7 +181,9 @@ function ConsumerAnalysis() {
   }));
 
   const statusBadge = (status: string) => (
-    <Badge variant={status === "paid" ? "default" : status === "overdue" ? "destructive" : "secondary"}>
+    <Badge
+      variant={status === "paid" ? "default" : status === "overdue" ? "destructive" : "secondary"}
+    >
       {status}
     </Badge>
   );
@@ -140,45 +197,264 @@ function ConsumerAnalysis() {
       userName={adminProfile?.full_name || null}
       userPhone={adminProfile?.phone || null}
     >
-      <div className="mb-4 flex items-center gap-2">
-        <Link to="/admin/consumers"><Button variant="ghost" size="sm"><ArrowLeft className="mr-1 h-4 w-4" /> Back</Button></Link>
-        <Badge variant="outline">Read-only</Badge>
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Link to="/admin/consumers">
+            <Button variant="ghost" size="sm">
+              <ArrowLeft className="mr-1 h-4 w-4" /> Back
+            </Button>
+          </Link>
+          <Badge variant="outline">Admin Controls</Badge>
+        </div>
       </div>
 
-      {/* Consumer identity */}
-      <Card className="mb-4">
-        <CardContent className="p-4">
-          <div className="grid gap-3 md:grid-cols-4">
-            <div><div className="text-xs text-muted-foreground">Name</div><div className="font-medium">{s?.profile?.full_name || "—"}</div></div>
-            <div><div className="text-xs text-muted-foreground">Phone</div><div className="font-medium">{s?.profile?.phone || "—"}</div></div>
-            <div><div className="text-xs text-muted-foreground">Email</div><div className="text-sm">{s?.profile?.email || "—"}</div></div>
-            <div><div className="text-xs text-muted-foreground">Status</div><div>{s?.profile ? (s.profile.is_active === false ? <Badge variant="destructive">Inactive</Badge> : <Badge>Active</Badge>) : "—"}</div></div>
-            <div><div className="text-xs text-muted-foreground">Block</div><div className="font-mono text-sm">{cd?.block_id || "—"}</div></div>
-            <div><div className="text-xs text-muted-foreground">Location</div><div className="text-sm">{cd?.locations?.name || "—"}</div></div>
-            <div><div className="text-xs text-muted-foreground">Serial</div><div className="font-mono text-sm">{cd?.serial_number || "—"}</div></div>
-            <div><div className="text-xs text-muted-foreground">Device ID</div><div className="font-mono text-sm">{cd?.device_id || "—"}</div></div>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Top Consumer Identity & Device Control Grid */}
+      <div className="grid gap-4 md:grid-cols-3 mb-4">
+        {/* Profile Card (2 cols) */}
+        <Card className="md:col-span-2">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base font-semibold">Account & Location Details</CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="grid gap-3 sm:grid-cols-4">
+              <div>
+                <div className="text-xs text-muted-foreground">Name</div>
+                <div className="font-medium text-sm">{s?.profile?.full_name || "—"}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground">Phone</div>
+                <div className="font-medium text-sm">{s?.profile?.phone || "—"}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground">Email</div>
+                <div className="text-sm truncate">{s?.profile?.email || "—"}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground">Account Status</div>
+                <div>
+                  {s?.profile ? (
+                    s.profile.is_active === false ? (
+                      <Badge variant="destructive">Inactive</Badge>
+                    ) : (
+                      <Badge className="bg-emerald-600 hover:bg-emerald-700">Active</Badge>
+                    )
+                  ) : (
+                    "—"
+                  )}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground">Block</div>
+                <div className="font-mono text-sm">{cd?.block_id || "—"}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground">Location</div>
+                <div className="text-sm">{cd?.locations?.name || "—"}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground">Serial Number</div>
+                <div className="font-mono text-sm">{cd?.serial_number || "—"}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground">SenseFlow Device ID</div>
+                <div className="font-mono text-sm font-semibold">{cd?.device_id || "—"}</div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
-      {/* Stat cards (same analytics as consumer dashboard) */}
+        {/* Dedicated Hardware & Valve Control Card */}
+        <Card className={`border ${isValveClosed ? "border-red-500/40 bg-red-500/5" : "border-emerald-500/30 bg-emerald-500/5"}`}>
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <Radio className={`h-4 w-4 ${isValveClosed ? "text-red-500" : "text-emerald-500"}`} />
+                Device & Valve Control
+              </CardTitle>
+              {deviceId ? (
+                isValveClosed ? (
+                  <Badge variant="destructive" className="gap-1 text-xs">
+                    <Power className="h-3 w-3" /> Valve Closed
+                  </Badge>
+                ) : (
+                  <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1 text-xs">
+                    <Droplets className="h-3 w-3" /> Valve Open
+                  </Badge>
+                )
+              ) : (
+                <Badge variant="outline">No Device</Badge>
+              )}
+            </div>
+            <CardDescription className="text-xs">
+              Hardware ID: <span className="font-mono font-medium text-foreground">{deviceId || "Not configured"}</span>
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="pt-1 space-y-3">
+            {deviceId ? (
+              <>
+                <div className="text-xs text-muted-foreground space-y-1">
+                  {devRecord?.lastActionAt && (
+                    <div className="flex items-center gap-1 text-[11px]">
+                      <Clock className="h-3 w-3" />
+                      <span>Last action: {format(new Date(devRecord.lastActionAt), "dd MMM, hh:mm a")}</span>
+                    </div>
+                  )}
+                  {devRecord?.lastActionReason && (
+                    <div className="text-[11px] italic truncate">
+                      Reason: &quot;{devRecord.lastActionReason}&quot;
+                    </div>
+                  )}
+                  {devRecord?.lastResetAt && (
+                    <div className="text-[11px] text-muted-foreground">
+                      Last reboot: {format(new Date(devRecord.lastResetAt), "dd MMM, hh:mm a")}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2 pt-1">
+                  {isValveClosed ? (
+                    <Button
+                      size="sm"
+                      className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs"
+                      onClick={() => {
+                        setValveTargetAction("on");
+                        setValveDialogOpen(true);
+                      }}
+                    >
+                      <Droplets className="mr-1.5 h-3.5 w-3.5" /> Turn Valve ON
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      className="flex-1 text-xs"
+                      onClick={() => {
+                        setValveTargetAction("off");
+                        setValveDialogOpen(true);
+                      }}
+                    >
+                      <Power className="mr-1.5 h-3.5 w-3.5" /> Turn Valve OFF
+                    </Button>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-xs"
+                    onClick={() => setResetDialogOpen(true)}
+                    title="Reset Hardware Logic"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5 text-blue-500" />
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <p className="text-xs text-muted-foreground py-2">
+                Configure a SenseFlow Device ID (e.g. USFL_WM0024) in consumer details to enable hardware valve control.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Date Range Selector */}
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        {([7, 15, 30] as const).map((d) => (
+          <Button
+            key={d}
+            size="sm"
+            variant={quick === d ? "default" : "outline"}
+            onClick={() => setRange(d)}
+          >
+            Last {d} days
+          </Button>
+        ))}
+        <div className="ml-auto flex items-center gap-2">
+          <Input
+            type="date"
+            value={start}
+            onChange={(e) => {
+              setQuick(0);
+              setStart(e.target.value);
+            }}
+            className="w-40"
+          />
+          <span className="text-muted-foreground text-sm">to</span>
+          <Input
+            type="date"
+            value={end}
+            onChange={(e) => {
+              setQuick(0);
+              setEnd(e.target.value);
+            }}
+            className="w-40"
+          />
+        </div>
+      </div>
+
+      {/* Stat cards (analytics and billing) */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatsCard label="Free tier" value={`${(s?.freeTier || 0).toLocaleString("en-IN")} L`} icon={Gift} />
+        <StatsCard
+          label="Free tier"
+          value={`${(s?.freeTier || 0).toLocaleString("en-IN")} L`}
+          icon={Gift}
+        />
         <StatsCard
           label="Latest reading"
-          value={latestReading?.meter_reading != null ? `${Math.round(Number(latestReading.meter_reading) * 1000).toLocaleString("en-IN")} L` : "—"}
-          hint={latestReading?.reading_datetime ? format(new Date(latestReading.reading_datetime), "dd MMM, hh:mm a") : undefined}
+          value={
+            latestReading?.meter_reading != null
+              ? `${Math.round(Number(latestReading.meter_reading) * 1000).toLocaleString("en-IN")} L`
+              : "—"
+          }
+          hint={
+            latestReading?.reading_datetime
+              ? format(new Date(latestReading.reading_datetime), "dd MMM, hh:mm a")
+              : undefined
+          }
           icon={Gauge}
         />
-        <StatsCard label="Today's usage" value={`${(live.data?.todaysUsageL || 0).toLocaleString("en-IN")} L`} icon={TrendingUp} />
-        <StatsCard label="This month usage" value={`${thisMonthTotal.toLocaleString("en-IN")} L`} icon={BarChart3} tone="success" />
-        <StatsCard label="Total usage" value={`${(live.data?.totalUsageL || 0).toLocaleString("en-IN")} L`} icon={Gauge} />
-        <StatsCard label="Chargeable (month)" value={`${thisMonthChargeable.toLocaleString("en-IN")} L`} icon={Droplets} tone="warning" hint={`After ${(s?.freeTier || 0).toLocaleString("en-IN")}L free`} />
-        <StatsCard label="This month bill" value={`₹${thisMonthBill.toFixed(2)}`} icon={IndianRupee} tone="success" />
-        <StatsCard label="Pending" value={`₹${(s?.pendingAmount || 0).toLocaleString("en-IN")}`} icon={FileText} tone="warning" />
-        <StatsCard label="Prepaid balance" value={`₹${(s?.balance || 0).toLocaleString("en-IN")}`} icon={Wallet} />
+        <StatsCard
+          label="Today's usage"
+          value={`${(live.data?.todaysUsageL || 0).toLocaleString("en-IN")} L`}
+          icon={TrendingUp}
+        />
+        <StatsCard
+          label="This month usage"
+          value={`${thisMonthTotal.toLocaleString("en-IN")} L`}
+          icon={BarChart3}
+          tone="success"
+        />
+        <StatsCard
+          label="Total usage"
+          value={`${(live.data?.totalUsageL || 0).toLocaleString("en-IN")} L`}
+          icon={Gauge}
+        />
+        <StatsCard
+          label="Chargeable (month)"
+          value={`${thisMonthChargeable.toLocaleString("en-IN")} L`}
+          icon={Droplets}
+          tone="warning"
+          hint={`After ${(s?.freeTier || 0).toLocaleString("en-IN")}L free`}
+        />
+        <StatsCard
+          label="This month bill"
+          value={`₹${thisMonthBill.toFixed(2)}`}
+          icon={IndianRupee}
+          tone="success"
+        />
+        <StatsCard
+          label="Pending"
+          value={`₹${(s?.pendingAmount || 0).toLocaleString("en-IN")}`}
+          icon={FileText}
+          tone="warning"
+        />
+        <StatsCard
+          label="Prepaid balance"
+          value={`₹${(s?.balance || 0).toLocaleString("en-IN")}`}
+          icon={Wallet}
+        />
       </div>
 
+      {/* Consumption History and Invoices */}
       <div className="mt-6 grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>
@@ -196,7 +472,9 @@ function ConsumerAnalysis() {
                   <Bar dataKey="consumption" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
-            ) : <p className="text-sm text-muted-foreground">No consumption data.</p>}
+            ) : (
+              <p className="text-sm text-muted-foreground">No consumption data.</p>
+            )}
           </CardContent>
         </Card>
 
@@ -220,129 +498,104 @@ function ConsumerAnalysis() {
                   <TableBody>
                     {s.invoices.map((i) => (
                       <TableRow key={i.id}>
-                        <TableCell className="text-xs">{new Date(i.created_at).toLocaleDateString()}</TableCell>
-                        <TableCell>
-                          <div className="font-semibold">₹{Number(i.total_amount).toFixed(2)}</div>
-                          <div className="text-xs text-muted-foreground">{Number(i.consumption).toLocaleString("en-IN")}L used</div>
+                        <TableCell className="text-xs">
+                          {format(new Date(i.created_at), "dd MMM yyyy")}
+                        </TableCell>
+                        <TableCell className="text-xs font-semibold">
+                          ₹{Number(i.total_amount).toFixed(2)}
                         </TableCell>
                         <TableCell>{statusBadge(i.status)}</TableCell>
-                        <TableCell>
-                          <Button size="sm" variant="ghost" onClick={() => setViewingInvoice(i)}>View</Button>
+                        <TableCell className="text-right">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setViewingInvoice(i)}
+                            className="text-xs h-7"
+                          >
+                            Details
+                          </Button>
                         </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
               </div>
-            ) : <p className="p-4 text-sm text-muted-foreground">No invoices yet.</p>}
+            ) : (
+              <p className="text-sm text-muted-foreground p-4">No invoices yet.</p>
+            )}
           </CardContent>
         </Card>
       </div>
 
-      {/* Readings & analysis */}
-      <Card className="mt-6">
-        <CardHeader>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2"><BarChart3 className="h-5 w-5" /> Readings & analysis</CardTitle>
-              <CardDescription>Filter by date range</CardDescription>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Input type="date" value={start} onChange={(e) => { setQuick(0); setStart(e.target.value); }} className="w-40" />
-              <span className="text-xs text-muted-foreground">to</span>
-              <Input type="date" value={end} onChange={(e) => { setQuick(0); setEnd(e.target.value); }} className="w-40" />
-              {([7, 15, 30] as const).map((d) => (
-                <Button key={d} size="sm" variant={quick === d ? "default" : "outline"} onClick={() => setRange(d)}>{d}d</Button>
-              ))}
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="rounded-lg border bg-primary/5 p-4">
-              <p className="text-xs text-muted-foreground">Total consumption</p>
-              <p className="text-2xl font-bold text-primary">{analysis.total.toLocaleString("en-IN")} L</p>
-            </div>
-            <div className="rounded-lg border bg-muted/40 p-4">
-              <p className="text-xs text-muted-foreground">Average / reading</p>
-              <p className="text-2xl font-bold">{analysis.avg.toLocaleString("en-IN")} L</p>
-            </div>
-            <div className="rounded-lg border bg-muted/40 p-4">
-              <p className="text-xs text-muted-foreground">Chargeable</p>
-              <p className="text-2xl font-bold">{analysis.chargeable.toLocaleString("en-IN")} L</p>
-              <p className="text-xs text-muted-foreground">After {analysis.proratedFree.toLocaleString("en-IN")}L free (pro-rated)</p>
-            </div>
-            <div className="rounded-lg border bg-success/5 p-4">
-              <p className="text-xs text-muted-foreground">Estimated bill (range)</p>
-              <p className="text-2xl font-bold">₹{analysis.bill.toFixed(2)}</p>
-              <p className="text-xs text-muted-foreground">Estimate — final bill from invoice</p>
-            </div>
-          </div>
-
-          {live.isLoading ? (
-            <div className="flex justify-center py-8"><Droplets className="h-6 w-6 animate-pulse opacity-40" /></div>
-          ) : (live.data?.history?.length || 0) > 0 ? (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Closing</TableHead>
-                  <TableHead>Opening</TableHead>
-                  <TableHead>Consumption</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {[...(live.data?.history || [])].reverse().map((r) => (
-                  <TableRow key={r.date}>
-                    <TableCell className="text-xs">{format(parseISO(r.date), "dd MMM yyyy")}</TableCell>
-                    <TableCell className="font-medium">{Number(r.closing).toLocaleString("en-IN")}</TableCell>
-                    <TableCell className="text-muted-foreground">{Number(r.opening).toLocaleString("en-IN")}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className={s?.freeTier ? (Number(r.consumption) > s.freeTier / 30 ? "border-warning text-warning" : "") : ""}>
-                        {Number(r.consumption).toLocaleString("en-IN")} L
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          ) : (
-            <div className="py-8 text-center text-muted-foreground">
-              <Droplets className="mx-auto mb-2 h-10 w-10 opacity-40" />
-              <p className="text-sm">No readings in this range.</p>
-            </div>
-          )}
-
-          {(live.data?.history?.length || 0) > 0 && (
-            <div className="flex flex-wrap gap-4 border-t pt-4 text-sm">
-              <div className="flex items-center gap-2"><Clock className="h-4 w-4 text-muted-foreground" /><span className="text-muted-foreground">Readings:</span> <Badge variant="secondary">{analysis.count}</Badge></div>
-              <div className="flex items-center gap-2"><span className="text-muted-foreground">Min:</span> <Badge variant="outline">{analysis.min.toLocaleString("en-IN")} L</Badge></div>
-              <div className="flex items-center gap-2"><span className="text-muted-foreground">Max:</span> <Badge variant="outline">{analysis.max.toLocaleString("en-IN")} L</Badge></div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Read-only invoice breakdown */}
+      {/* Invoice Detail Dialog */}
       <Dialog open={!!viewingInvoice} onOpenChange={(o) => !o && setViewingInvoice(null)}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Invoice details</DialogTitle></DialogHeader>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Invoice Details</DialogTitle>
+          </DialogHeader>
           {viewingInvoice && (
-            <div className="grid grid-cols-2 gap-2 text-sm">
-              <div><div className="text-xs text-muted-foreground">Period</div><div>{new Date(viewingInvoice.bill_period_start).toLocaleDateString()} – {new Date(viewingInvoice.bill_period_end).toLocaleDateString()}</div></div>
-              <div><div className="text-xs text-muted-foreground">Due</div><div>{new Date(viewingInvoice.due_date).toLocaleDateString()}</div></div>
-              <div><div className="text-xs text-muted-foreground">Consumption</div><div>{Number(viewingInvoice.consumption).toLocaleString("en-IN")} L</div></div>
-              <div><div className="text-xs text-muted-foreground">Free tier</div><div>{Number(viewingInvoice.free_consumption).toLocaleString("en-IN")} L</div></div>
-              <div><div className="text-xs text-muted-foreground">Chargeable</div><div>{Number(viewingInvoice.chargeable_consumption).toLocaleString("en-IN")} L</div></div>
-              <div><div className="text-xs text-muted-foreground">Rate applied</div><div>₹{Number(viewingInvoice.rate_applied).toFixed(4)}/L</div></div>
-              <div><div className="text-xs text-muted-foreground">Amount</div><div>₹{Number(viewingInvoice.amount).toLocaleString("en-IN")}</div></div>
-              <div><div className="text-xs text-muted-foreground">Late fee</div><div>₹{Number(viewingInvoice.late_fee).toLocaleString("en-IN")}</div></div>
-              <div className="col-span-2 border-t pt-2"><div className="text-xs text-muted-foreground">Total</div><div className="text-lg font-bold">₹{Number(viewingInvoice.total_amount).toLocaleString("en-IN")}</div></div>
-              <div className="col-span-2"><div className="text-xs text-muted-foreground">Status</div><div>{statusBadge(viewingInvoice.status)}{viewingInvoice.paid_at ? ` · paid ${new Date(viewingInvoice.paid_at).toLocaleString()}` : ""}</div></div>
+            <div className="space-y-3 text-sm">
+              <div className="flex justify-between border-b pb-2">
+                <span className="text-muted-foreground">Bill Period</span>
+                <span className="font-medium">
+                  {format(new Date(viewingInvoice.bill_period_start), "dd MMM")} -{" "}
+                  {format(new Date(viewingInvoice.bill_period_end), "dd MMM yyyy")}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Total Consumption</span>
+                <span>{Number(viewingInvoice.consumption).toLocaleString("en-IN")} L</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Free Tier</span>
+                <span>{Number(viewingInvoice.free_consumption).toLocaleString("en-IN")} L</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Chargeable</span>
+                <span>
+                  {Number(viewingInvoice.chargeable_consumption).toLocaleString("en-IN")} L
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Rate applied</span>
+                <span>₹{Number(viewingInvoice.rate_applied).toFixed(4)} / L</span>
+              </div>
+              <div className="flex justify-between border-t pt-2 font-bold">
+                <span>Total Amount</span>
+                <span>₹{Number(viewingInvoice.total_amount).toFixed(2)}</span>
+              </div>
             </div>
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Valve Control Dialog */}
+      {deviceId && (
+        <ValveControlDialog
+          open={valveDialogOpen}
+          onOpenChange={setValveDialogOpen}
+          deviceId={deviceId}
+          targetName={consumerName || "Consumer"}
+          currentStatus={valveStatus}
+          targetAction={valveTargetAction}
+          onSuccess={() => {
+            qc.invalidateQueries({ queryKey: ["admin-consumer-device-state"] });
+          }}
+        />
+      )}
+
+      {/* Reset Device Dialog */}
+      {deviceId && (
+        <ResetDeviceDialog
+          open={resetDialogOpen}
+          onOpenChange={setResetDialogOpen}
+          deviceId={deviceId}
+          targetName={consumerName || "Consumer"}
+          onSuccess={() => {
+            qc.invalidateQueries({ queryKey: ["admin-consumer-device-state"] });
+          }}
+        />
+      )}
     </DashboardLayout>
   );
 }

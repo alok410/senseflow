@@ -196,4 +196,4 @@ export const listSecretaries = createServerFn({ method: "GET" }).handler(async (
       is_active: p.is_active,
       secretary_locations: locMap.get(p.id) || [],
     }));
-});
+});

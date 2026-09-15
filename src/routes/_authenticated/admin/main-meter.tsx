@@ -1,12 +1,29 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { format, parseISO, subDays } from "date-fns";
 import {
-  ArrowLeft, Gauge, TrendingUp, BarChart3, Droplets, Activity, Clock,
+  ArrowLeft,
+  Gauge,
+  TrendingUp,
+  BarChart3,
+  Droplets,
+  Activity,
+  Clock,
+  Power,
+  RotateCcw,
+  ShieldAlert,
+  Radio,
 } from "lucide-react";
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
 } from "recharts";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { StatsCard } from "@/components/StatsCard";
@@ -15,21 +32,30 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
 } from "@/components/ui/table";
 import { useSession, useMyProfile } from "@/hooks/use-session";
 import { getMainMeterDashboardStats } from "@/lib/meter.functions";
+import { getDeviceStates, ValveStatus } from "@/lib/device-control.functions";
+import { ValveControlDialog } from "@/components/ValveControlDialog";
+import { ResetDeviceDialog } from "@/components/ResetDeviceDialog";
 import { ADMIN_NAV } from "@/lib/nav";
 
 export const Route = createFileRoute("/_authenticated/admin/main-meter")({
   component: MainMeterDashboard,
 });
 
-// Full main-meter (USFL_FL7053) analysis — same usage view as the consumer
-// dashboard, but for the site's main meter (no invoices / billing).
+const MAIN_METER_ID = "USFL_FL7053";
+
 function MainMeterDashboard() {
   const { user } = useSession();
   const { data: adminProfile } = useMyProfile(user);
+  const qc = useQueryClient();
 
   const [quick, setQuick] = useState<0 | 1 | 7 | 15 | 30>(30);
   const [start, setStart] = useState<string>(format(subDays(new Date(), 30), "yyyy-MM-dd"));
@@ -46,10 +72,29 @@ function MainMeterDashboard() {
     setEnd(t);
   };
 
+  // Device control state
+  const [valveDialogOpen, setValveDialogOpen] = useState(false);
+  const [valveTargetAction, setValveTargetAction] = useState<"on" | "off">("off");
+  const [resetDialogOpen, setResetDialogOpen] = useState(false);
+
+  const getDeviceStatesFn = useServerFn(getDeviceStates);
+
   const live = useQuery({
     queryKey: ["admin-main-meter", start, end],
     queryFn: async () => getMainMeterDashboardStats({ data: { start, end } }),
   });
+
+  const deviceId = live.data?.device_id || MAIN_METER_ID;
+
+  const deviceStateQuery = useQuery({
+    queryKey: ["main-meter-device-state", deviceId],
+    queryFn: async () => await getDeviceStatesFn({ data: { deviceIds: [deviceId] } }),
+    refetchInterval: 20000,
+  });
+
+  const devRecord = deviceStateQuery.data?.[deviceId];
+  const valveStatus: ValveStatus = devRecord?.valveStatus || "open";
+  const isValveClosed = valveStatus === "closed";
 
   const latest = live.data?.latest;
   const rows = live.data?.history || [];
@@ -72,21 +117,135 @@ function MainMeterDashboard() {
       userName={adminProfile?.full_name || null}
       userPhone={adminProfile?.phone || null}
     >
-      <div className="mb-4 flex items-center gap-2">
-        <Link to="/admin"><Button variant="ghost" size="sm"><ArrowLeft className="mr-1 h-4 w-4" /> Back</Button></Link>
-        <Badge variant="outline">Main Meter · {live.data?.device_id || "USFL_FL7053"}</Badge>
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Link to="/admin">
+            <Button variant="ghost" size="sm">
+              <ArrowLeft className="mr-1 h-4 w-4" /> Back
+            </Button>
+          </Link>
+          <Badge variant="outline">Main Site Meter · {deviceId}</Badge>
+        </div>
       </div>
+
+      {/* Main Site Valve Safeguard Card */}
+      <Card
+        className={`mb-5 border ${
+          isValveClosed
+            ? "border-red-500/50 bg-red-500/10"
+            : "border-emerald-500/30 bg-emerald-500/5"
+        }`}
+      >
+        <CardContent className="p-4 flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div
+              className={`p-3 rounded-xl ${
+                isValveClosed ? "bg-red-500/20 text-red-500" : "bg-emerald-500/20 text-emerald-500"
+              }`}
+            >
+              {isValveClosed ? <ShieldAlert className="h-6 w-6" /> : <Radio className="h-6 w-6" />}
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="font-semibold text-base">Site Main Inlet Valve</h3>
+                {isValveClosed ? (
+                  <Badge variant="destructive" className="gap-1">
+                    <Power className="h-3 w-3" /> SITE WATER STOPPED
+                  </Badge>
+                ) : (
+                  <Badge className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1">
+                    <Droplets className="h-3 w-3" /> Supply Active & Flowing
+                  </Badge>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Target Device: <span className="font-mono font-medium text-foreground">{deviceId}</span>
+                {devRecord?.lastActionAt && (
+                  <span>
+                    {" "}· Last commanded {format(new Date(devRecord.lastActionAt), "dd MMM, hh:mm a")}
+                  </span>
+                )}
+                {devRecord?.lastResetAt && (
+                  <span> · Rebooted {format(new Date(devRecord.lastResetAt), "dd MMM, hh:mm a")}</span>
+                )}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {isValveClosed ? (
+              <Button
+                size="sm"
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-sm"
+                onClick={() => {
+                  setValveTargetAction("on");
+                  setValveDialogOpen(true);
+                }}
+              >
+                <Droplets className="mr-1.5 h-4 w-4" /> Open Main Valve (Restore Supply)
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                variant="destructive"
+                className="font-medium shadow-sm"
+                onClick={() => {
+                  setValveTargetAction("off");
+                  setValveDialogOpen(true);
+                }}
+              >
+                <Power className="mr-1.5 h-4 w-4" /> Emergency Shut OFF Main Valve
+              </Button>
+            )}
+
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setResetDialogOpen(true)}
+              title="Reboot Device Hardware"
+            >
+              <RotateCcw className="mr-1.5 h-3.5 w-3.5 text-blue-500" />
+              Reset Device
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Date range */}
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <Button size="sm" variant={quick === 1 ? "default" : "outline"} onClick={setToday}>Today</Button>
+        <Button size="sm" variant={quick === 1 ? "default" : "outline"} onClick={setToday}>
+          Today
+        </Button>
         {([7, 15, 30] as const).map((d) => (
-          <Button key={d} size="sm" variant={quick === d ? "default" : "outline"} onClick={() => setRange(d)}>Last {d} days</Button>
+          <Button
+            key={d}
+            size="sm"
+            variant={quick === d ? "default" : "outline"}
+            onClick={() => setRange(d)}
+          >
+            Last {d} days
+          </Button>
         ))}
         <div className="ml-auto flex items-center gap-2">
-          <Input type="date" value={start} onChange={(e) => { setQuick(0); setStart(e.target.value); }} className="w-40" />
+          <Input
+            type="date"
+            value={start}
+            onChange={(e) => {
+              setQuick(0);
+              setStart(e.target.value);
+            }}
+            className="w-40"
+          />
           <span className="text-muted-foreground text-sm">to</span>
-          <Input type="date" value={end} onChange={(e) => { setQuick(0); setEnd(e.target.value); }} className="w-40" />
+          <Input
+            type="date"
+            value={end}
+            onChange={(e) => {
+              setQuick(0);
+              setEnd(e.target.value);
+            }}
+            className="w-40"
+          />
         </div>
       </div>
 
@@ -94,15 +253,45 @@ function MainMeterDashboard() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatsCard
           label="Latest reading"
-          value={latest?.meter_reading != null ? `${Math.round(Number(latest.meter_reading) * 1000).toLocaleString("en-IN")} L` : "—"}
-          hint={latest?.reading_datetime ? format(new Date(latest.reading_datetime), "dd MMM, hh:mm a") : undefined}
+          value={
+            latest?.meter_reading != null
+              ? `${Math.round(Number(latest.meter_reading) * 1000).toLocaleString("en-IN")} L`
+              : "—"
+          }
+          hint={
+            latest?.reading_datetime
+              ? format(new Date(latest.reading_datetime), "dd MMM, hh:mm a")
+              : undefined
+          }
           icon={Gauge}
         />
-        <StatsCard label="Today's usage" value={`${(live.data?.todaysUsageL || 0).toLocaleString("en-IN")} L`} icon={TrendingUp} />
-        <StatsCard label="This month usage" value={`${(live.data?.thisMonthL || 0).toLocaleString("en-IN")} L`} icon={BarChart3} tone="success" />
-        <StatsCard label="Total usage" value={`${(live.data?.totalUsageL || 0).toLocaleString("en-IN")} L`} icon={Gauge} />
-        <StatsCard label="Flow rate (L/s)" value={live.data ? Number(live.data.flowRate).toFixed(2) : "—"} icon={Activity} tone="warning" />
-        <StatsCard label="Consumption (range)" value={`${(live.data?.rangeConsumptionL || 0).toLocaleString("en-IN")} L`} icon={Droplets} />
+        <StatsCard
+          label="Today's usage"
+          value={`${(live.data?.todaysUsageL || 0).toLocaleString("en-IN")} L`}
+          icon={TrendingUp}
+        />
+        <StatsCard
+          label="This month usage"
+          value={`${(live.data?.thisMonthL || 0).toLocaleString("en-IN")} L`}
+          icon={BarChart3}
+          tone="success"
+        />
+        <StatsCard
+          label="Total usage"
+          value={`${(live.data?.totalUsageL || 0).toLocaleString("en-IN")} L`}
+          icon={Gauge}
+        />
+        <StatsCard
+          label="Flow rate (L/s)"
+          value={live.data ? Number(live.data.flowRate).toFixed(2) : "—"}
+          icon={Activity}
+          tone="warning"
+        />
+        <StatsCard
+          label="Consumption (range)"
+          value={`${(live.data?.rangeConsumptionL || 0).toLocaleString("en-IN")} L`}
+          icon={Droplets}
+        />
       </div>
 
       {/* Consumption history */}
@@ -122,73 +311,81 @@ function MainMeterDashboard() {
                 <Bar dataKey="consumption" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
-          ) : <p className="text-sm text-muted-foreground">{live.isLoading ? "Loading readings…" : "No consumption in range."}</p>}
+          ) : (
+            <p className="text-sm text-muted-foreground">No consumption data for this period.</p>
+          )}
         </CardContent>
       </Card>
 
-      {/* Readings & analysis */}
+      {/* History table */}
       <Card className="mt-6">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2"><BarChart3 className="h-5 w-5" /> Readings & analysis</CardTitle>
-          <CardDescription>Daily opening / closing / consumption</CardDescription>
+          <CardTitle>Daily breakdown</CardTitle>
+          <CardDescription>{rows.length} days in range</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="rounded-lg border bg-primary/5 p-4">
-              <p className="text-xs text-muted-foreground">Total consumption</p>
-              <p className="text-2xl font-bold text-primary">{total.toLocaleString("en-IN")} L</p>
-            </div>
-            <div className="rounded-lg border bg-muted/40 p-4">
-              <p className="text-xs text-muted-foreground">Average / day</p>
-              <p className="text-2xl font-bold">{avg.toLocaleString("en-IN")} L</p>
-            </div>
-            <div className="rounded-lg border bg-muted/40 p-4">
-              <p className="text-xs text-muted-foreground">Min / day</p>
-              <p className="text-2xl font-bold">{min.toLocaleString("en-IN")} L</p>
-            </div>
-            <div className="rounded-lg border bg-muted/40 p-4">
-              <p className="text-xs text-muted-foreground">Max / day</p>
-              <p className="text-2xl font-bold">{max.toLocaleString("en-IN")} L</p>
-            </div>
-          </div>
-
-          {live.isLoading ? (
-            <div className="py-8 text-center text-muted-foreground">Loading…</div>
-          ) : rows.length > 0 ? (
+        <CardContent className="p-0">
+          <div className="max-h-96 overflow-y-auto">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Date</TableHead>
-                  <TableHead>Closing</TableHead>
-                  <TableHead>Opening</TableHead>
-                  <TableHead>Consumption</TableHead>
+                  <TableHead>Closing reading</TableHead>
+                  <TableHead>Daily consumption</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {[...rows].reverse().map((r) => (
+                {rows.map((r) => (
                   <TableRow key={r.date}>
-                    <TableCell className="text-xs">{format(parseISO(r.date), "dd MMM yyyy")}</TableCell>
-                    <TableCell className="font-medium">{Number(r.closing).toLocaleString("en-IN")}</TableCell>
-                    <TableCell className="text-muted-foreground">{Number(r.opening).toLocaleString("en-IN")}</TableCell>
-                    <TableCell><Badge variant="outline">{Number(r.consumption).toLocaleString("en-IN")} L</Badge></TableCell>
+                    <TableCell className="font-mono text-xs">{r.date}</TableCell>
+                    <TableCell className="text-xs">
+                      {r.closing != null
+                        ? `${Math.round(Number(r.closing) * 1000).toLocaleString("en-IN")} L`
+                        : "—"}
+                    </TableCell>
+                    <TableCell className="text-xs font-semibold">
+                      {r.consumption != null
+                        ? `${Math.round(Number(r.consumption)).toLocaleString("en-IN")} L`
+                        : "—"}
+                    </TableCell>
                   </TableRow>
                 ))}
+                {!rows.length && (
+                  <TableRow>
+                    <TableCell colSpan={3} className="text-center text-muted-foreground py-8">
+                      No records found.
+                    </TableCell>
+                  </TableRow>
+                )}
               </TableBody>
             </Table>
-          ) : (
-            <div className="py-8 text-center text-muted-foreground">
-              <Droplets className="mx-auto mb-2 h-10 w-10 opacity-40" />
-              <p className="text-sm">No readings in this range.</p>
-            </div>
-          )}
-
-          {rows.length > 0 && (
-            <div className="flex flex-wrap gap-4 border-t pt-4 text-sm">
-              <div className="flex items-center gap-2"><Clock className="h-4 w-4 text-muted-foreground" /><span className="text-muted-foreground">Days:</span> <Badge variant="secondary">{rows.length}</Badge></div>
-            </div>
-          )}
+          </div>
         </CardContent>
       </Card>
+
+      {/* Main Meter Valve Control Dialog with high-security guard */}
+      <ValveControlDialog
+        open={valveDialogOpen}
+        onOpenChange={setValveDialogOpen}
+        deviceId={deviceId}
+        targetName="Main Site Inlet Meter"
+        currentStatus={valveStatus}
+        targetAction={valveTargetAction}
+        isMainMeter={true}
+        onSuccess={() => {
+          qc.invalidateQueries({ queryKey: ["main-meter-device-state"] });
+        }}
+      />
+
+      {/* Reset Device Dialog */}
+      <ResetDeviceDialog
+        open={resetDialogOpen}
+        onOpenChange={setResetDialogOpen}
+        deviceId={deviceId}
+        targetName="Main Site Inlet Meter"
+        onSuccess={() => {
+          qc.invalidateQueries({ queryKey: ["main-meter-device-state"] });
+        }}
+      />
     </DashboardLayout>
   );
 }
