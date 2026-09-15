@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import fs from "node:fs";
 import path from "node:path";
+import os from "node:os";
 
 const SENSEFLOW_BASE_URL = "https://apps.samasth.io:8090";
 const RESET_ENDPOINT = `${SENSEFLOW_BASE_URL}/api/senseflow/reset`;
@@ -20,35 +21,50 @@ export interface DeviceStateRecord {
   lastActionBy?: string;
 }
 
-// Simple JSON storage helper for device states
-const STORAGE_FILE = path.resolve(process.cwd(), "src", "data", "device_states.json");
+// Store in os.tmpdir() which is guaranteed to be writable in all environments (Linux, Lambda, Docker, Windows)
+const STORAGE_FILE = path.join(os.tmpdir(), "senseflow_device_states.json");
+
+// In-memory global store to guarantee fast access within node process
+declare global {
+  var __senseflow_device_states: Record<string, DeviceStateRecord> | undefined;
+}
+if (!globalThis.__senseflow_device_states) {
+  globalThis.__senseflow_device_states = {};
+}
 
 function readStoredStates(): Record<string, DeviceStateRecord> {
-  try {
-    if (!fs.existsSync(STORAGE_FILE)) {
-      return {};
-    }
-    const content = fs.readFileSync(STORAGE_FILE, "utf-8");
-    return JSON.parse(content || "{}");
-  } catch {
-    return {};
+  if (globalThis.__senseflow_device_states && Object.keys(globalThis.__senseflow_device_states).length > 0) {
+    return { ...globalThis.__senseflow_device_states };
   }
+  try {
+    if (fs.existsSync(STORAGE_FILE)) {
+      const content = fs.readFileSync(STORAGE_FILE, "utf-8");
+      const parsed = JSON.parse(content || "{}");
+      globalThis.__senseflow_device_states = { ...parsed };
+      return parsed;
+    }
+  } catch (err) {
+    console.warn("Could not read from tmp device states:", err);
+  }
+  return {};
 }
 
 function saveStoredState(record: DeviceStateRecord): void {
+  if (!globalThis.__senseflow_device_states) {
+    globalThis.__senseflow_device_states = {};
+  }
+  globalThis.__senseflow_device_states[record.deviceId] = {
+    ...(globalThis.__senseflow_device_states[record.deviceId] || {}),
+    ...record,
+  };
   try {
-    const dir = path.dirname(STORAGE_FILE);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    const all = readStoredStates();
-    all[record.deviceId] = {
-      ...(all[record.deviceId] || {}),
-      ...record,
-    };
-    fs.writeFileSync(STORAGE_FILE, JSON.stringify(all, null, 2), "utf-8");
+    fs.writeFileSync(
+      STORAGE_FILE,
+      JSON.stringify(globalThis.__senseflow_device_states, null, 2),
+      "utf-8"
+    );
   } catch (err) {
-    console.error("Failed to save device state to file:", err);
+    // Ignore tmp write issues in read-only setups
   }
 }
 
@@ -176,6 +192,7 @@ export const setDeviceValveState = createServerFn({ method: "POST" })
     const newStatus: ValveStatus = data.action === "on" ? "open" : "closed";
     const now = new Date().toISOString();
 
+    // 1. Save in-memory and in tmp storage
     saveStoredState({
       deviceId: data.deviceId,
       valveStatus: newStatus,
@@ -184,6 +201,36 @@ export const setDeviceValveState = createServerFn({ method: "POST" })
       lastActionReason: data.reason || (data.action === "on" ? "Valve opened" : "Valve closed"),
       lastActionBy: data.actionBy || "Admin/Secretary",
     });
+
+    // 2. Persist audit trail in Supabase meter_readings if possible
+    try {
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      let cid = data.consumerId;
+      if (!cid) {
+        const { data: cDetail } = await supabaseAdmin
+          .from("consumer_details")
+          .select("user_id")
+          .eq("device_id", data.deviceId)
+          .limit(1)
+          .maybeSingle();
+        cid = cDetail?.user_id;
+      }
+      if (cid) {
+        await supabaseAdmin.from("meter_readings").insert({
+          consumer_id: cid,
+          meter_id: data.deviceId,
+          reading: 0,
+          previous_reading: 0,
+          consumption: 0,
+          reading_date: now,
+          source: "manual",
+          notes: `VALVE:${data.action}|REASON:${data.reason || ""}|TIME:${now}`,
+        });
+      }
+    } catch (dbErr) {
+      // Non-blocking log failure
+      console.warn("Could not log valve change to Supabase:", dbErr);
+    }
 
     return {
       success: true,
@@ -208,6 +255,38 @@ export const getDeviceStates = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     const all = readStoredStates();
+
+    // Query Supabase meter_readings for any persisted valve states
+    try {
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const { data: valveLogs } = await supabaseAdmin
+        .from("meter_readings")
+        .select("meter_id, notes, reading_date")
+        .ilike("notes", "VALVE:%")
+        .order("reading_date", { ascending: false })
+        .limit(150);
+
+      if (valveLogs && valveLogs.length > 0) {
+        for (const log of valveLogs) {
+          const dev = log.meter_id;
+          if (dev && !all[dev]) {
+            const isOff = log.notes?.startsWith("VALVE:off");
+            const reason = log.notes?.split("|REASON:")[1]?.split("|TIME:")[0] || "";
+            all[dev] = {
+              deviceId: dev,
+              valveStatus: isOff ? "closed" : "open",
+              lastAction: isOff ? "off" : "on",
+              lastActionAt: log.reading_date,
+              lastActionReason: reason,
+            };
+            saveStoredState(all[dev]);
+          }
+        }
+      }
+    } catch (dbErr) {
+      // ignore
+    }
+
     if (!data.deviceIds || data.deviceIds.length === 0) {
       return all;
     }
@@ -217,7 +296,6 @@ export const getDeviceStates = createServerFn({ method: "POST" })
       if (all[id]) {
         result[id] = all[id];
       } else {
-        // Default assumption for registered active devices is "open" unless marked otherwise
         result[id] = {
           deviceId: id,
           valveStatus: "open",

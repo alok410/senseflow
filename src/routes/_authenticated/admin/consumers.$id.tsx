@@ -160,7 +160,18 @@ function ConsumerAnalysis() {
     refetchInterval: 20000,
   });
 
-  const devRecord = deviceId ? deviceStateQuery.data?.[deviceId] : null;
+  const devRecord = useMemo(() => {
+    if (!deviceId) return null;
+    let local: any = null;
+    if (typeof window !== "undefined") {
+      try {
+        const saved = JSON.parse(localStorage.getItem("senseflow_valve_states") || "{}");
+        local = saved[deviceId];
+      } catch {}
+    }
+    return deviceStateQuery.data?.[deviceId] || local || null;
+  }, [deviceId, deviceStateQuery.data]);
+
   const valveStatus: ValveStatus = devRecord?.valveStatus || "open";
   const isValveClosed = valveStatus === "closed";
 

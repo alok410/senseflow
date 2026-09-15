@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { AlertTriangle, Droplets, Loader2, ShieldAlert } from "lucide-react";
 import {
@@ -54,6 +54,7 @@ export function ValveControlDialog({
   onSuccess,
   isMainMeter,
 }: ValveControlDialogProps) {
+  const qc = useQueryClient();
   const [reasonCategory, setReasonCategory] = useState<string>(
     targetAction === "off" ? REASONS[0] : REASONS[4]
   );
@@ -80,6 +81,53 @@ export function ValveControlDialog({
       onOpenChange(false);
       setCustomNote("");
       setMainMeterConfirmText("");
+
+      const newStatus: ValveStatus = targetAction === "on" ? "open" : "closed";
+      const record = {
+        deviceId,
+        valveStatus: newStatus,
+        lastAction: targetAction,
+        lastActionAt: new Date().toISOString(),
+        lastActionReason: customNote.trim()
+          ? `${reasonCategory}: ${customNote.trim()}`
+          : reasonCategory,
+      };
+
+      // 1. Immediately update localStorage for instant persistence across reloads
+      if (typeof window !== "undefined") {
+        try {
+          const saved = JSON.parse(localStorage.getItem("senseflow_valve_states") || "{}");
+          saved[deviceId] = record;
+          localStorage.setItem("senseflow_valve_states", JSON.stringify(saved));
+        } catch (e) {
+          // ignore
+        }
+      }
+
+      // 2. Optimistically update all React Query caches for device states
+      qc.setQueriesData({ queryKey: ["admin-device-states"] }, (old: any) => ({
+        ...(old || {}),
+        [deviceId]: record,
+      }));
+      qc.setQueriesData({ queryKey: ["secretary-device-states"] }, (old: any) => ({
+        ...(old || {}),
+        [deviceId]: record,
+      }));
+      qc.setQueriesData({ queryKey: ["admin-consumer-device-state"] }, (old: any) => ({
+        ...(old || {}),
+        [deviceId]: record,
+      }));
+      qc.setQueriesData({ queryKey: ["main-meter-device-state"] }, (old: any) => ({
+        ...(old || {}),
+        [deviceId]: record,
+      }));
+
+      // 3. Invalidate queries to refetch server state
+      qc.invalidateQueries({ queryKey: ["admin-device-states"] });
+      qc.invalidateQueries({ queryKey: ["secretary-device-states"] });
+      qc.invalidateQueries({ queryKey: ["admin-consumer-device-state"] });
+      qc.invalidateQueries({ queryKey: ["main-meter-device-state"] });
+
       onSuccess?.();
     },
     onError: (err: any) => {

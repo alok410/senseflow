@@ -132,6 +132,20 @@ function SecretaryUsers() {
     refetchInterval: 25000,
   });
 
+  // Merge server states with localStorage for instant zero-latency UI reflection
+  const effectiveDeviceStates = useMemo(() => {
+    let local: Record<string, any> = {};
+    if (typeof window !== "undefined") {
+      try {
+        local = JSON.parse(localStorage.getItem("senseflow_valve_states") || "{}");
+      } catch {}
+    }
+    return {
+      ...local,
+      ...(deviceStatesQuery.data || {}),
+    };
+  }, [deviceStatesQuery.data]);
+
   const fetchMut = useMutation({
     mutationFn: async (consumerId: string) => fetchAndStoreLatestReading({ data: { consumerId } }),
     onSuccess: (r) => {
@@ -145,7 +159,7 @@ function SecretaryUsers() {
     const q = search.trim().toLowerCase();
     return (list.data || []).filter((c) => {
       const devId = c.device_id || c.meter_id;
-      const st = devId ? deviceStatesQuery.data?.[devId] : null;
+      const st = devId ? effectiveDeviceStates[devId] : null;
       const isClosed = st?.valveStatus === "closed";
 
       if (filterValve === "open" && isClosed) return false;
@@ -216,7 +230,7 @@ function SecretaryUsers() {
               <tbody className="divide-y">
                 {filteredRows.map((c) => {
                   const devId = c.device_id || c.meter_id;
-                  const st = devId ? deviceStatesQuery.data?.[devId] : null;
+                  const st = devId ? effectiveDeviceStates[devId] : null;
                   const isClosed = st?.valveStatus === "closed";
 
                   return (

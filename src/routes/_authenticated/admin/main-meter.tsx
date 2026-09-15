@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { format, parseISO, subDays } from "date-fns";
 import {
   ArrowLeft,
@@ -93,7 +93,18 @@ function MainMeterDashboard() {
     refetchInterval: 20000,
   });
 
-  const devRecord = deviceStateQuery.data?.[deviceId];
+  const devRecord = useMemo(() => {
+    if (!deviceId) return null;
+    let local: any = null;
+    if (typeof window !== "undefined") {
+      try {
+        const saved = JSON.parse(localStorage.getItem("senseflow_valve_states") || "{}");
+        local = saved[deviceId];
+      } catch {}
+    }
+    return deviceStateQuery.data?.[deviceId] || local || null;
+  }, [deviceId, deviceStateQuery.data]);
+
   const valveStatus: ValveStatus = devRecord?.valveStatus || "open";
   const isValveClosed = valveStatus === "closed";
 

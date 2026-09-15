@@ -162,6 +162,20 @@ function AdminConsumersList() {
     refetchInterval: 30000,
   });
 
+  // Merge server states with localStorage for instant zero-latency UI reflection
+  const effectiveDeviceStates = useMemo(() => {
+    let local: Record<string, any> = {};
+    if (typeof window !== "undefined") {
+      try {
+        local = JSON.parse(localStorage.getItem("senseflow_valve_states") || "{}");
+      } catch {}
+    }
+    return {
+      ...local,
+      ...(deviceStates.data || {}),
+    };
+  }, [deviceStates.data]);
+
   const locName = useMemo(() => {
     const m = new Map<string, string>();
     (locs.data || []).forEach((l) => m.set(l.id, `${l.name} (${l.code})`));
@@ -546,7 +560,7 @@ function AdminConsumersList() {
               <tbody className="divide-y">
                 {filtered.map((c) => {
                   const devId = c.consumer_details?.device_id;
-                  const st = devId ? deviceStates.data?.[devId] : null;
+                  const st = devId ? effectiveDeviceStates[devId] : null;
                   const isClosed = st?.valveStatus === "closed";
                   const isSelected = !!(devId && selectedDevices.includes(devId));
 

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { AlertTriangle, Droplets, Loader2 } from "lucide-react";
 import {
@@ -51,6 +51,7 @@ export function BatchValveControlDialog({
   );
   const [notes, setNotes] = useState<string>("");
 
+  const qc = useQueryClient();
   const batchValveFn = useServerFn(batchSetDeviceValveState);
 
   const batchMutation = useMutation({
@@ -75,6 +76,44 @@ export function BatchValveControlDialog({
         );
       }
       onOpenChange(false);
+
+      const newStatus = targetAction === "on" ? "open" : "closed";
+      const now = new Date().toISOString();
+      const reason = notes.trim() ? `${reasonCategory}: ${notes.trim()}` : reasonCategory;
+
+      if (typeof window !== "undefined") {
+        try {
+          const saved = JSON.parse(localStorage.getItem("senseflow_valve_states") || "{}");
+          for (const id of res.succeeded) {
+            saved[id] = {
+              deviceId: id,
+              valveStatus: newStatus,
+              lastAction: targetAction,
+              lastActionAt: now,
+              lastActionReason: reason,
+            };
+          }
+          localStorage.setItem("senseflow_valve_states", JSON.stringify(saved));
+        } catch (e) {}
+      }
+
+      qc.setQueriesData({ queryKey: ["admin-device-states"] }, (old: any) => {
+        const next = { ...(old || {}) };
+        for (const id of res.succeeded) {
+          next[id] = {
+            deviceId: id,
+            valveStatus: newStatus,
+            lastAction: targetAction,
+            lastActionAt: now,
+            lastActionReason: reason,
+          };
+        }
+        return next;
+      });
+
+      qc.invalidateQueries({ queryKey: ["admin-device-states"] });
+      qc.invalidateQueries({ queryKey: ["secretary-device-states"] });
+
       onSuccess?.();
     },
     onError: (err: any) => {
