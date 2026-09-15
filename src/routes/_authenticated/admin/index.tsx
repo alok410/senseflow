@@ -16,6 +16,7 @@ import { useSession, useMyProfile } from "@/hooks/use-session";
 import { ADMIN_NAV } from "@/lib/nav";
 import { getAdminDashboardStats } from "@/lib/meter.functions";
 import { seedDemoConsumers } from "@/lib/consumers.functions";
+import { WaterDropLoader } from "@/components/WaterDropLoader";
 
 export const Route = createFileRoute("/_authenticated/admin/")({
   component: AdminDashboard,
@@ -236,6 +237,10 @@ function AdminDashboard() {
       userName={profile?.full_name || null}
       userPhone={profile?.phone || null}
     >
+      {/* Full-page water-drop loader — shown while live API data is in flight */}
+      {(liveStats.isLoading || consumers.isLoading) && (
+        <WaterDropLoader message="Fetching live meter readings…" />
+      )}
       {/* Main Meter Overview — click to open the full main-meter dashboard */}
       <Link to="/admin/main-meter" className="block">
       <Card className="cursor-pointer border-primary/20 transition-all hover:-translate-y-0.5 hover:border-primary/50 hover:shadow-lg">
