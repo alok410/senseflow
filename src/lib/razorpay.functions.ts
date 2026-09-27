@@ -1,4 +1,4 @@
-﻿import { createServerFn } from "@tanstack/react-start";
+import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import crypto from "crypto";
 
@@ -15,11 +15,17 @@ const createOrderInput = z.object({
 export const createRazorpayOrder = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => createOrderInput.parse(d))
   .handler(async ({ data }) => {
-    const keyId = process.env.RAZORPAY_KEY_ID;
-    const keySecret = process.env.RAZORPAY_KEY_SECRET;
+    // Read keys from app_settings DB first, fall back to env vars
+    const { getSettingByKey } = await import("@/lib/settings.functions");
+    const [dbKeyId, dbSecret] = await Promise.all([
+      getSettingByKey("razorpay_key_id"),
+      getSettingByKey("razorpay_key_secret"),
+    ]);
+    const keyId = dbKeyId || process.env.RAZORPAY_KEY_ID || "";
+    const keySecret = dbSecret || process.env.RAZORPAY_KEY_SECRET || "";
 
     if (!keyId || !keySecret || keyId === "rzp_test_YOUR_KEY_ID") {
-      throw new Error("Razorpay is not configured. Please set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in your environment.");
+      throw new Error("Razorpay is not configured. Go to Admin → Settings and enter your Razorpay Key ID and Secret.");
     }
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -88,7 +94,10 @@ const verifyPaymentInput = z.object({
 export const verifyRazorpayPayment = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => verifyPaymentInput.parse(d))
   .handler(async ({ data }) => {
-    const keySecret = process.env.RAZORPAY_KEY_SECRET;
+    // Read secret from app_settings DB first, fall back to env
+    const { getSettingByKey } = await import("@/lib/settings.functions");
+    const dbSecret = await getSettingByKey("razorpay_key_secret");
+    const keySecret = dbSecret || process.env.RAZORPAY_KEY_SECRET || "";
     if (!keySecret || keySecret === "YOUR_KEY_SECRET") {
       throw new Error("Razorpay not configured.");
     }

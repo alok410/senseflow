@@ -8,6 +8,7 @@ export const ADMIN_NAV: NavItem[] = [
   { label: "Rates", href: "/admin/rates" },
   { label: "Invoices", href: "/admin/invoices" },
   { label: "Analytics", href: "/admin/analytics" },
+  { label: "Settings", href: "/admin/settings" },
 ];
 
 export const SECRETARY_NAV: NavItem[] = [
