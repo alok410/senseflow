@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -245,9 +245,14 @@ function ConsumerDashboard() {
         </Card>
 
         <Card>
-          <CardHeader>
-            <CardTitle>Recent invoices</CardTitle>
-            <CardDescription>Latest bills on your account</CardDescription>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle>Recent invoices</CardTitle>
+              <CardDescription>Latest bills on your account</CardDescription>
+            </div>
+            <Link to="/consumer/invoices">
+              <Button size="sm" variant="outline">View all</Button>
+            </Link>
           </CardHeader>
           <CardContent className="p-0">
             {s?.invoices.length ? (
