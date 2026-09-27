@@ -403,3 +403,128 @@ export const markOverdueInvoices = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     return { ok: true, updatedCount: (data || []).length };
   });
+
+// ─────────────────────────────────────────────
+// getPaymentAnalytics — admin: billing & payment analytics
+// ─────────────────────────────────────────────
+export type MonthlyTrend = {
+  month: string;       // e.g. "2026-08"
+  label: string;       // e.g. "Aug 2026"
+  totalInvoiced: number;
+  totalCollected: number;
+  totalConsumption: number;
+  invoiceCount: number;
+  paidCount: number;
+};
+
+export type PaymentAnalytics = {
+  totalInvoices: number;
+  paidInvoices: number;
+  pendingInvoices: number;
+  overdueInvoices: number;
+  totalInvoicedAmount: number;
+  totalCollectedAmount: number;
+  pendingAmount: number;
+  overdueAmount: number;
+  cashPayments: number;
+  cashAmount: number;
+  onlinePayments: number;
+  onlineAmount: number;
+  monthlyTrends: MonthlyTrend[];
+};
+
+export const getPaymentAnalytics = createServerFn({ method: "POST" })
+  .handler(async () => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    // Fetch all invoices (last 12 months)
+    const since = new Date();
+    since.setMonth(since.getMonth() - 11);
+    since.setDate(1);
+    const sinceStr = since.toISOString().slice(0, 10);
+
+    const [invoicesRes, paymentsRes] = await Promise.all([
+      supabaseAdmin
+        .from("invoices")
+        .select("id, status, total_amount, consumption, bill_period_start, created_at, paid_at")
+        .gte("created_at", `${sinceStr}T00:00:00Z`)
+        .order("created_at", { ascending: false }),
+      supabaseAdmin
+        .from("payments")
+        .select("id, method, amount, created_at, invoice_id, razorpay_payment_id")
+        .gte("created_at", `${sinceStr}T00:00:00Z`)
+        .order("created_at", { ascending: false }),
+    ]);
+
+    if (invoicesRes.error) throw new Error(invoicesRes.error.message);
+    if (paymentsRes.error) throw new Error(paymentsRes.error.message);
+
+    const invoices = invoicesRes.data || [];
+    const payments = paymentsRes.data || [];
+
+    // Aggregate invoice stats
+    const paidInvs = invoices.filter((i: any) => i.status === "paid");
+    const pendingInvs = invoices.filter((i: any) => i.status === "pending");
+    const overdueInvs = invoices.filter((i: any) => i.status === "overdue");
+
+    const sum = (arr: any[], key: string) =>
+      arr.reduce((s: number, i: any) => s + Number(i[key] ?? 0), 0);
+
+    // Aggregate payment stats (cash vs online)
+    const cashPayments = payments.filter((p: any) => p.method === "manual");
+    const onlinePayments = payments.filter(
+      (p: any) => p.method === "online" || p.razorpay_payment_id
+    );
+
+    // Monthly trends (group by YYYY-MM of bill_period_start or created_at)
+    const monthMap = new Map<string, MonthlyTrend>();
+    const getLabel = (ym: string) => {
+      const [y, m] = ym.split("-");
+      const d = new Date(parseInt(y), parseInt(m) - 1, 1);
+      return d.toLocaleString("en-IN", { month: "short", year: "numeric" });
+    };
+
+    for (const inv of invoices) {
+      const ym = (inv.bill_period_start || inv.created_at || "").slice(0, 7);
+      if (!ym) continue;
+      if (!monthMap.has(ym)) {
+        monthMap.set(ym, {
+          month: ym,
+          label: getLabel(ym),
+          totalInvoiced: 0,
+          totalCollected: 0,
+          totalConsumption: 0,
+          invoiceCount: 0,
+          paidCount: 0,
+        });
+      }
+      const m = monthMap.get(ym)!;
+      m.totalInvoiced += Number(inv.total_amount ?? 0);
+      m.totalConsumption += Number(inv.consumption ?? 0);
+      m.invoiceCount++;
+      if (inv.status === "paid") {
+        m.totalCollected += Number(inv.total_amount ?? 0);
+        m.paidCount++;
+      }
+    }
+
+    const monthlyTrends = Array.from(monthMap.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([, v]) => v);
+
+    return {
+      totalInvoices: invoices.length,
+      paidInvoices: paidInvs.length,
+      pendingInvoices: pendingInvs.length,
+      overdueInvoices: overdueInvs.length,
+      totalInvoicedAmount: sum(invoices, "total_amount"),
+      totalCollectedAmount: sum(paidInvs, "total_amount"),
+      pendingAmount: sum(pendingInvs, "total_amount"),
+      overdueAmount: sum(overdueInvs, "total_amount"),
+      cashPayments: cashPayments.length,
+      cashAmount: sum(cashPayments, "amount"),
+      onlinePayments: onlinePayments.length,
+      onlineAmount: sum(onlinePayments, "amount"),
+      monthlyTrends,
+    } as PaymentAnalytics;
+  });

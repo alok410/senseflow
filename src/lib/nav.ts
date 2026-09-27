@@ -18,4 +18,5 @@ export const SECRETARY_NAV: NavItem[] = [
 
 export const CONSUMER_NAV: NavItem[] = [
   { label: "Dashboard", href: "/consumer" },
+  { label: "Invoices & Payments", href: "/consumer/invoices" },
 ];

@@ -15,6 +15,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedSecretaryIndexRouteImport } from './routes/_authenticated/secretary/index'
 import { Route as AuthenticatedConsumerIndexRouteImport } from './routes/_authenticated/consumer/index'
+import { Route as AuthenticatedConsumerInvoicesRouteImport } from './routes/_authenticated/consumer/invoices'
 import { Route as AuthenticatedAdminIndexRouteImport } from './routes/_authenticated/admin/index'
 import { Route as AuthenticatedSecretaryUsersRouteImport } from './routes/_authenticated/secretary/users'
 import { Route as AuthenticatedSecretaryInvoicesRouteImport } from './routes/_authenticated/secretary/invoices'
@@ -57,6 +58,12 @@ const AuthenticatedConsumerIndexRoute =
   AuthenticatedConsumerIndexRouteImport.update({
     id: '/consumer/',
     path: '/consumer/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedConsumerInvoicesRoute =
+  AuthenticatedConsumerInvoicesRouteImport.update({
+    id: '/consumer/invoices',
+    path: '/consumer/invoices',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedAdminIndexRoute = AuthenticatedAdminIndexRouteImport.update({
@@ -143,6 +150,7 @@ export interface FileRoutesByFullPath {
   '/admin/users': typeof AuthenticatedAdminUsersRoute
   '/secretary/users': typeof AuthenticatedSecretaryUsersRoute
   '/secretary/invoices': typeof AuthenticatedSecretaryInvoicesRoute
+  '/consumer/invoices': typeof AuthenticatedConsumerInvoicesRoute
   '/admin/': typeof AuthenticatedAdminIndexRoute
   '/consumer/': typeof AuthenticatedConsumerIndexRoute
   '/secretary/': typeof AuthenticatedSecretaryIndexRoute
@@ -162,6 +170,7 @@ export interface FileRoutesByTo {
   '/admin/users': typeof AuthenticatedAdminUsersRoute
   '/secretary/users': typeof AuthenticatedSecretaryUsersRoute
   '/secretary/invoices': typeof AuthenticatedSecretaryInvoicesRoute
+  '/consumer/invoices': typeof AuthenticatedConsumerInvoicesRoute
   '/admin': typeof AuthenticatedAdminIndexRoute
   '/consumer': typeof AuthenticatedConsumerIndexRoute
   '/secretary': typeof AuthenticatedSecretaryIndexRoute
@@ -183,6 +192,7 @@ export interface FileRoutesById {
   '/_authenticated/admin/users': typeof AuthenticatedAdminUsersRoute
   '/_authenticated/secretary/users': typeof AuthenticatedSecretaryUsersRoute
   '/_authenticated/secretary/invoices': typeof AuthenticatedSecretaryInvoicesRoute
+  '/_authenticated/consumer/invoices': typeof AuthenticatedConsumerInvoicesRoute
   '/_authenticated/admin/': typeof AuthenticatedAdminIndexRoute
   '/_authenticated/consumer/': typeof AuthenticatedConsumerIndexRoute
   '/_authenticated/secretary/': typeof AuthenticatedSecretaryIndexRoute
@@ -204,6 +214,7 @@ export interface FileRouteTypes {
     | '/admin/users'
     | '/secretary/users'
     | '/secretary/invoices'
+    | '/consumer/invoices'
     | '/admin/'
     | '/consumer/'
     | '/secretary/'
@@ -223,6 +234,7 @@ export interface FileRouteTypes {
     | '/admin/users'
     | '/secretary/users'
     | '/secretary/invoices'
+    | '/consumer/invoices'
     | '/admin'
     | '/consumer'
     | '/secretary'
@@ -243,6 +255,7 @@ export interface FileRouteTypes {
     | '/_authenticated/admin/users'
     | '/_authenticated/secretary/users'
     | '/_authenticated/secretary/invoices'
+    | '/_authenticated/consumer/invoices'
     | '/_authenticated/admin/'
     | '/_authenticated/consumer/'
     | '/_authenticated/secretary/'
@@ -297,6 +310,13 @@ declare module '@tanstack/react-router' {
       path: '/consumer'
       fullPath: '/consumer/'
       preLoaderRoute: typeof AuthenticatedConsumerIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/consumer/invoices': {
+      id: '/_authenticated/consumer/invoices'
+      path: '/consumer/invoices'
+      fullPath: '/consumer/invoices'
+      preLoaderRoute: typeof AuthenticatedConsumerInvoicesRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/admin/': {
@@ -412,6 +432,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAdminUsersRoute: typeof AuthenticatedAdminUsersRoute
   AuthenticatedSecretaryUsersRoute: typeof AuthenticatedSecretaryUsersRoute
   AuthenticatedSecretaryInvoicesRoute: typeof AuthenticatedSecretaryInvoicesRoute
+  AuthenticatedConsumerInvoicesRoute: typeof AuthenticatedConsumerInvoicesRoute
   AuthenticatedAdminIndexRoute: typeof AuthenticatedAdminIndexRoute
   AuthenticatedConsumerIndexRoute: typeof AuthenticatedConsumerIndexRoute
   AuthenticatedSecretaryIndexRoute: typeof AuthenticatedSecretaryIndexRoute
@@ -430,6 +451,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAdminUsersRoute: AuthenticatedAdminUsersRoute,
   AuthenticatedSecretaryUsersRoute: AuthenticatedSecretaryUsersRoute,
   AuthenticatedSecretaryInvoicesRoute: AuthenticatedSecretaryInvoicesRoute,
+  AuthenticatedConsumerInvoicesRoute: AuthenticatedConsumerInvoicesRoute,
   AuthenticatedAdminIndexRoute: AuthenticatedAdminIndexRoute,
   AuthenticatedConsumerIndexRoute: AuthenticatedConsumerIndexRoute,
   AuthenticatedSecretaryIndexRoute: AuthenticatedSecretaryIndexRoute,
