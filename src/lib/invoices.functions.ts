@@ -61,7 +61,7 @@ export const listInvoices = createServerFn({ method: "POST" })
       .limit(data.limit ?? 500);
 
     if (data.status && data.status !== "all") {
-      query = query.eq("status", data.status);
+      query = query.eq("status", data.status as any);
     }
     if (data.consumerId) {
       query = query.eq("consumer_id", data.consumerId);

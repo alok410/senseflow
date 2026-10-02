@@ -14,6 +14,30 @@ export type Database = {
   }
   public: {
     Tables: {
+      app_settings: {
+        Row: {
+          description: string | null
+          is_secret: boolean
+          key: string
+          updated_at: string
+          value: string | null
+        }
+        Insert: {
+          description?: string | null
+          is_secret?: boolean
+          key: string
+          updated_at?: string
+          value?: string | null
+        }
+        Update: {
+          description?: string | null
+          is_secret?: boolean
+          key?: string
+          updated_at?: string
+          value?: string | null
+        }
+        Relationships: []
+      }
       consumer_details: {
         Row: {
           account_type: Database["public"]["Enums"]["account_type"]
@@ -79,6 +103,7 @@ export type Database = {
           due_date: string
           free_consumption: number
           id: string
+          invoice_number: string | null
           late_fee: number
           meter_reading_id: string | null
           paid_at: string | null
@@ -98,6 +123,7 @@ export type Database = {
           due_date: string
           free_consumption?: number
           id?: string
+          invoice_number?: string | null
           late_fee?: number
           meter_reading_id?: string | null
           paid_at?: string | null
@@ -117,6 +143,7 @@ export type Database = {
           due_date?: string
           free_consumption?: number
           id?: string
+          invoice_number?: string | null
           late_fee?: number
           meter_reading_id?: string | null
           paid_at?: string | null
@@ -255,6 +282,10 @@ export type Database = {
           invoice_id: string | null
           method: Database["public"]["Enums"]["payment_method"]
           notes: string | null
+          payment_status: string
+          razorpay_order_id: string | null
+          razorpay_payment_id: string | null
+          razorpay_signature: string | null
           recorded_by: string | null
           transaction_id: string | null
         }
@@ -266,6 +297,10 @@ export type Database = {
           invoice_id?: string | null
           method: Database["public"]["Enums"]["payment_method"]
           notes?: string | null
+          payment_status?: string
+          razorpay_order_id?: string | null
+          razorpay_payment_id?: string | null
+          razorpay_signature?: string | null
           recorded_by?: string | null
           transaction_id?: string | null
         }
@@ -277,6 +312,10 @@ export type Database = {
           invoice_id?: string | null
           method?: Database["public"]["Enums"]["payment_method"]
           notes?: string | null
+          payment_status?: string
+          razorpay_order_id?: string | null
+          razorpay_payment_id?: string | null
+          razorpay_signature?: string | null
           recorded_by?: string | null
           transaction_id?: string | null
         }
