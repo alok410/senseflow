@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import {
   FileText, CreditCard, Wallet, History, CheckCircle2, Clock, AlertTriangle,
-  Loader2, IndianRupee, Search, Download,
+  Loader2, IndianRupee, Search, Download, CalendarDays,
 } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -68,6 +68,7 @@ function ConsumerInvoices() {
 
   const [statusFilter, setStatusFilter] = useState(ALL);
   const [search, setSearch] = useState("");
+  const [monthFilter, setMonthFilter] = useState(""); // "" = latest 3, "YYYY-MM" = filter by month
   const [payDialog, setPayDialog] = useState<InvoiceRow | null>(null);
   const [viewing, setViewing] = useState<InvoiceRow | null>(null);
   const [printInvoice, setPrintInvoice] = useState<InvoiceRow | null>(null);
@@ -105,13 +106,40 @@ function ConsumerInvoices() {
       getHistoryFn({ data: { consumerId: user!.id } }) as Promise<PaymentHistoryRow[]>,
   });
 
+  // All available months derived from invoice data (for the month picker)
+  const availableMonths = useMemo(() => {
+    const months = new Set<string>();
+    for (const inv of invoices.data || []) {
+      months.add(inv.bill_period_start.slice(0, 7)); // "YYYY-MM"
+    }
+    return Array.from(months).sort((a, b) => b.localeCompare(a)); // newest first
+  }, [invoices.data]);
+
+  // Filtered invoices: if monthFilter set → all for that month; else → latest 3
   const filtered = useMemo(() => {
+    let list = invoices.data || [];
+    // Status filter
+    if (statusFilter !== ALL) {
+      list = list.filter((i) => i.status === statusFilter);
+    }
+    // Search
     const q = search.trim().toLowerCase();
-    return (invoices.data || []).filter((i) => {
-      if (!q) return true;
-      return i.id.toLowerCase().includes(q) || (i.bill_period_start || "").includes(q);
-    });
-  }, [invoices.data, search]);
+    if (q) {
+      list = list.filter((i) =>
+        i.id.toLowerCase().includes(q) ||
+        (i.bill_period_start || "").includes(q) ||
+        (i.bill_period_end || "").includes(q)
+      );
+    }
+    // Month filter or latest 3
+    if (monthFilter) {
+      list = list.filter((i) => i.bill_period_start.slice(0, 7) === monthFilter);
+    } else if (!q && statusFilter === ALL) {
+      // Default: show latest 3
+      list = list.slice(0, 3);
+    }
+    return list;
+  }, [invoices.data, statusFilter, search, monthFilter]);
 
   const stats = useMemo(() => {
     const all = invoices.data || [];
@@ -207,28 +235,62 @@ function ConsumerInvoices() {
 
         {/* Invoices tab */}
         <TabsContent value="invoices">
-          <div className="mb-4 flex flex-wrap gap-2">
-            <div className="relative flex-1 min-w-[200px]">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                className="pl-9"
-                placeholder="Search invoices…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
+          {/* Month filter toolbar */}
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-2 flex-1">
+              <CalendarDays className="h-4 w-4 text-muted-foreground shrink-0" />
+              <select
+                className="flex h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring w-44"
+                value={monthFilter}
+                onChange={(e) => { setMonthFilter(e.target.value); setStatusFilter(ALL); setSearch(""); }}
+              >
+                <option value="">Latest 3 invoices</option>
+                {availableMonths.map((ym) => {
+                  const [y, m] = ym.split("-");
+                  const label = new Date(parseInt(y), parseInt(m) - 1, 1).toLocaleString("en-IN", { month: "long", year: "numeric" });
+                  return <option key={ym} value={ym}>{label}</option>;
+                })}
+              </select>
+              {monthFilter && (
+                <button
+                  onClick={() => setMonthFilter("")}
+                  className="text-xs text-muted-foreground underline hover:text-foreground"
+                >
+                  Clear
+                </button>
+              )}
             </div>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-40">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL}>All statuses</SelectItem>
-                <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="paid">Paid</SelectItem>
-                <SelectItem value="overdue">Overdue</SelectItem>
-              </SelectContent>
-            </Select>
+            {monthFilter && (
+              <>
+                <div className="relative flex-1 min-w-[180px]">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    className="pl-9"
+                    placeholder="Search…"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                  />
+                </div>
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={ALL}>All statuses</SelectItem>
+                    <SelectItem value="pending">Pending</SelectItem>
+                    <SelectItem value="paid">Paid</SelectItem>
+                    <SelectItem value="overdue">Overdue</SelectItem>
+                  </SelectContent>
+                </Select>
+              </>
+            )}
           </div>
+
+          {/* Latest 3 notice */}
+          {!monthFilter && (
+            <div className="mb-3 flex items-center gap-2 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 px-4 py-2.5 text-sm text-blue-700 dark:text-blue-300">
+              <FileText className="h-4 w-4 shrink-0" />
+              <span>Showing your <strong>latest 3 invoices</strong>. Use the month filter above to view all invoices for any month.</span>
+            </div>
+          )}
 
           <Card>
             <CardContent className="p-0">

@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import {
   Search, Eye, CheckCircle, Loader2, Plus, RefreshCw,
-  FileText, IndianRupee, AlertTriangle, TrendingUp, Download,
+  FileText, IndianRupee, AlertTriangle, TrendingUp, Download, CalendarDays, Users2,
 } from "lucide-react";
 import { InvoicePrintModal } from "@/components/InvoicePrintModal";
 import { DashboardLayout } from "@/components/DashboardLayout";
@@ -24,6 +24,7 @@ import { useSession, useMyProfile } from "@/hooks/use-session";
 import { ADMIN_NAV } from "@/lib/nav";
 import {
   listInvoices, generateInvoice, markInvoicePaid, markOverdueInvoices,
+  bulkGenerateMonthlyInvoices,
   type InvoiceRow,
 } from "@/lib/invoices.functions";
 import { getAdminUsersList } from "@/lib/admin.functions";
@@ -50,6 +51,7 @@ function AdminInvoices() {
   const generateFn = useServerFn(generateInvoice);
   const markPaidFn = useServerFn(markInvoicePaid);
   const markOverdueFn = useServerFn(markOverdueInvoices);
+  const bulkGenFn = useServerFn(bulkGenerateMonthlyInvoices);
   const getUsersFn = useServerFn(getAdminUsersList);
 
   // Filters
@@ -61,9 +63,21 @@ function AdminInvoices() {
   const [viewing, setViewing] = useState<InvoiceRow | null>(null);
   const [payDialog, setPayDialog] = useState<InvoiceRow | null>(null);
   const [genOpen, setGenOpen] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [printInvoice, setPrintInvoice] = useState<InvoiceRow | null>(null);
   const [notes, setNotes] = useState("");
   const [method, setMethod] = useState<"manual" | "online" | "prepaid_recharge">("manual");
+
+  // Bulk generate state — auto-fill to previous month
+  const [bulkStart, setBulkStart] = useState(() => {
+    const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1);
+    return d.toISOString().slice(0, 10);
+  });
+  const [bulkEnd, setBulkEnd] = useState(() => {
+    const d = new Date(); d.setDate(0); // last day of prev month
+    return d.toISOString().slice(0, 10);
+  });
+  const [bulkDueDays, setBulkDueDays] = useState("15");
 
   // Generate invoice form state
   const [genConsumer, setGenConsumer] = useState("");
@@ -173,6 +187,23 @@ function AdminInvoices() {
     onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "Failed"),
   });
 
+  const bulkGenMut = useMutation({
+    mutationFn: () => bulkGenFn({ data: {
+      periodStart: bulkStart,
+      periodEnd: bulkEnd,
+      dueDays: parseInt(bulkDueDays) || 15,
+    } }),
+    onSuccess: (r) => {
+      toast.success(
+        `✅ ${r.generated} invoices generated · ${r.skipped} skipped (already existed) · ${r.errors} errors — out of ${r.total} consumers.`,
+        { duration: 8000 }
+      );
+      setBulkOpen(false);
+      qc.invalidateQueries({ queryKey: ["admin-invoices"] });
+    },
+    onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "Bulk generate failed"),
+  });
+
   const fmtINR = (n: number) => `₹${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   return (
@@ -237,8 +268,16 @@ function AdminInvoices() {
           {overdueMut.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
           Mark overdue
         </Button>
-        <Button size="sm" onClick={() => setGenOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" /> Generate invoice
+        <Button size="sm" variant="outline" onClick={() => setGenOpen(true)}>
+          <Plus className="mr-2 h-4 w-4" /> Generate (single)
+        </Button>
+        <Button
+          size="sm"
+          onClick={() => setBulkOpen(true)}
+          className="bg-blue-600 hover:bg-blue-700 text-white"
+        >
+          <CalendarDays className="mr-2 h-4 w-4" />
+          Bulk Generate Monthly
         </Button>
       </div>
 
@@ -437,6 +476,53 @@ function AdminInvoices() {
               <Button type="submit" disabled={genMut.isPending || !genConsumer}>
                 {genMut.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Generate
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Generate Monthly Invoices dialog */}
+      <Dialog open={bulkOpen} onOpenChange={(o) => !o && setBulkOpen(false)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Users2 className="h-5 w-5 text-blue-600" />
+              Bulk Generate Monthly Invoices
+            </DialogTitle>
+            <DialogDescription>
+              Generates invoices for <strong>all consumers</strong> for the selected period. Already-existing invoices are skipped automatically.
+            </DialogDescription>
+          </DialogHeader>
+          <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); bulkGenMut.mutate(); }}>
+            <div className="rounded-xl bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 p-4 text-sm">
+              <p className="font-medium text-blue-800 dark:text-blue-300 flex items-center gap-2">
+                <CalendarDays className="h-4 w-4" /> Typically run on the 1st of each month
+              </p>
+              <p className="text-blue-600 dark:text-blue-400 text-xs mt-1">
+                The period is auto-filled to last month. Adjust if needed.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Period start *</Label>
+                <Input type="date" value={bulkStart} onChange={(e) => setBulkStart(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Period end *</Label>
+                <Input type="date" value={bulkEnd} onChange={(e) => setBulkEnd(e.target.value)} />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Due in (days)</Label>
+              <Input type="number" min={1} max={90} value={bulkDueDays} onChange={(e) => setBulkDueDays(e.target.value)} />
+            </div>
+            <DialogFooter>
+              <Button variant="outline" type="button" onClick={() => setBulkOpen(false)}>Cancel</Button>
+              <Button type="submit" disabled={bulkGenMut.isPending} className="bg-blue-600 hover:bg-blue-700 text-white">
+                {bulkGenMut.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                <Users2 className="mr-2 h-4 w-4" />
+                Generate for all consumers
               </Button>
             </DialogFooter>
           </form>

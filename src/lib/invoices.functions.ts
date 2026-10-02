@@ -208,6 +208,127 @@ export const generateInvoice = createServerFn({ method: "POST" })
   });
 
 // ─────────────────────────────────────────────
+// bulkGenerateMonthlyInvoices — admin only
+// Generates invoices for ALL active consumers for a given period.
+// Skips consumers who already have an invoice for that period.
+// Returns a summary: { generated, skipped, errors }
+// ─────────────────────────────────────────────
+const bulkInput = z.object({
+  periodStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  periodEnd:   z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  dueDays:     z.number().int().min(1).max(90).optional(),
+});
+
+export const bulkGenerateMonthlyInvoices = createServerFn({ method: "POST" })
+  .inputValidator((d: unknown) => bulkInput.parse(d))
+  .handler(async ({ data }) => {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    // Get water rate
+    const { data: rate, error: rateErr } = await supabaseAdmin
+      .from("water_rates")
+      .select("rate_per_liter, free_tier_liters")
+      .lte("effective_from", data.periodEnd)
+      .order("effective_from", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (rateErr) throw new Error(rateErr.message);
+    if (!rate) throw new Error("No water rate configured. Please set up a water rate first.");
+
+    const ratePerLiter = Number(rate.rate_per_liter);
+    const freePerMonth = Number(rate.free_tier_liters);
+
+    // Period length for pro-rated free tier
+    const startDate = new Date(data.periodStart);
+    const endDate = new Date(data.periodEnd);
+    const periodDays = Math.max(1, Math.round((endDate.getTime() - startDate.getTime()) / 86_400_000) + 1);
+    const daysInMonth = new Date(startDate.getFullYear(), startDate.getMonth() + 1, 0).getDate();
+    const proratedFree = Math.round(freePerMonth * (periodDays / daysInMonth));
+
+    const dueDate = new Date();
+    dueDate.setDate(dueDate.getDate() + (data.dueDays ?? 15));
+    const dueDateStr = dueDate.toISOString().slice(0, 10);
+
+    // Get all active consumer IDs
+    const { data: consumerRoles, error: cErr } = await supabaseAdmin
+      .from("user_roles")
+      .select("user_id")
+      .eq("role", "consumer");
+    if (cErr) throw new Error(cErr.message);
+    const consumerIds = Array.from(new Set((consumerRoles || []).map((r: any) => r.user_id)));
+    if (!consumerIds.length) return { generated: 0, skipped: 0, errors: 0, total: 0, details: [] };
+
+    // Check which consumers already have an invoice for this period
+    const { data: existing } = await supabaseAdmin
+      .from("invoices")
+      .select("consumer_id")
+      .eq("bill_period_start", data.periodStart)
+      .eq("bill_period_end", data.periodEnd)
+      .in("consumer_id", consumerIds);
+    const alreadyHasInvoice = new Set((existing || []).map((r: any) => r.consumer_id));
+
+    // Get all meter readings for the period in one batch
+    const { data: allReadings } = await supabaseAdmin
+      .from("meter_readings")
+      .select("consumer_id, consumption")
+      .in("consumer_id", consumerIds)
+      .gte("reading_date", `${data.periodStart}T00:00:00Z`)
+      .lte("reading_date", `${data.periodEnd}T23:59:59Z`);
+
+    // Group readings by consumer
+    const readingsByConsumer = new Map<string, number>();
+    for (const r of allReadings || []) {
+      const prev = readingsByConsumer.get(r.consumer_id) ?? 0;
+      readingsByConsumer.set(r.consumer_id, prev + Number(r.consumption || 0));
+    }
+
+    // Build batch insert array (only for consumers without existing invoice)
+    const toInsert: any[] = [];
+    let skipped = 0;
+    for (const consumerId of consumerIds) {
+      if (alreadyHasInvoice.has(consumerId)) { skipped++; continue; }
+      const totalConsumption = readingsByConsumer.get(consumerId) ?? 0;
+      const freeConsumption = Math.min(totalConsumption, proratedFree);
+      const chargeableConsumption = Math.max(0, totalConsumption - freeConsumption);
+      const amount = Math.round(chargeableConsumption * ratePerLiter * 100) / 100;
+      const totalAmount = amount; // no late fee for bulk generation
+      toInsert.push({
+        consumer_id: consumerId,
+        bill_period_start: data.periodStart,
+        bill_period_end: data.periodEnd,
+        consumption: totalConsumption,
+        free_consumption: freeConsumption,
+        chargeable_consumption: chargeableConsumption,
+        rate_applied: ratePerLiter,
+        amount,
+        late_fee: 0,
+        total_amount: totalAmount,
+        due_date: dueDateStr,
+        status: "pending",
+      });
+    }
+
+    let generated = 0;
+    let errors = 0;
+    if (toInsert.length > 0) {
+      // Insert in chunks of 50
+      for (let i = 0; i < toInsert.length; i += 50) {
+        const chunk = toInsert.slice(i, i + 50);
+        const { error: iErr } = await supabaseAdmin.from("invoices").insert(chunk);
+        if (iErr) { errors += chunk.length; }
+        else { generated += chunk.length; }
+      }
+    }
+
+    return {
+      generated,
+      skipped,
+      errors,
+      total: consumerIds.length,
+    };
+  });
+
+// ─────────────────────────────────────────────
 // markInvoicePaid — admin & secretary
 // ─────────────────────────────────────────────
 const markPaidInput = z.object({
