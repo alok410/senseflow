@@ -1,5 +1,13 @@
 # Bug Log
 
+## [v1.0.21] – 2026-10-02 (14:22)
+
+### Fixed
+- Bug: Build failed, blocking publishing.
+  - Cause: Consumer invoices page returned two side-by-side root elements (layout + print modal), which is invalid.
+  - Fix: Moved the invoice print modal inside the page layout.
+  - Files: src/routes/_authenticated/consumer/invoices.tsx
+
 ## [v1.0.20] – 2026-09-12 (15:45)
 
 ### Fixed

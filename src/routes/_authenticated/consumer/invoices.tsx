@@ -631,12 +631,11 @@ function ConsumerInvoices() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {/* Invoice PDF print modal */}
+      <InvoicePrintModal
+        invoice={printInvoice}
+        onClose={() => setPrintInvoice(null)}
+      />
     </DashboardLayout>
-
-    {/* Invoice PDF print modal */}
-    <InvoicePrintModal
-      invoice={printInvoice}
-      onClose={() => setPrintInvoice(null)}
-    />
   );
 }
