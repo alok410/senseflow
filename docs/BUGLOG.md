@@ -1,5 +1,21 @@
 # Bug Log
 
+## [v1.0.22] – 2026-10-02 (14:35)
+
+### Fixed
+- Bug: Preview type-check failed with 30+ errors.
+  - Cause: Settings and online-payment code used database fields/table that didn't exist (app_settings, invoice_number, Razorpay payment columns); leftover unused Razorpay handler referenced removed variables; root error page and invoice status filter had loose types.
+  - Fix: Added the missing table/columns via migration, removed the dead Razorpay handler, typed the error page with ErrorComponentProps, cast the status filter.
+  - Files: drizzle/migrations/0001_app_settings_and_payment_fields.sql, src/routes/_authenticated/consumer/invoices.tsx, src/routes/__root.tsx, src/lib/invoices.functions.ts
+
+## [v1.0.21] – 2026-10-02 (14:22)
+
+### Fixed
+- Bug: Build failed, blocking publishing.
+  - Cause: Consumer invoices page returned two side-by-side root elements (layout + print modal), which is invalid.
+  - Fix: Moved the invoice print modal inside the page layout.
+  - Files: src/routes/_authenticated/consumer/invoices.tsx
+
 ## [v1.0.20] – 2026-09-12 (15:45)
 
 ### Fixed

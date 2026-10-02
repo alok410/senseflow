@@ -145,69 +145,6 @@ function ConsumerInvoices() {
     onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "Payment failed"),
   });
 
-  const handleRazorpayPay = async () => {
-    if (!selectedInvoice || !user) return;
-    setRazorpayLoading(true);
-    const invId = selectedInvoice.id;
-    const consumerId = user.id;
-    try {
-      const amountPaise = Math.round(Number(selectedInvoice.total_amount) * 100);
-      const order = await createOrderFn({
-        data: { invoiceId: invId, consumerId, amountPaise },
-      });
-
-      if (!(window as any).Razorpay) {
-        await new Promise<void>((res, rej) => {
-          const s = document.createElement("script");
-          s.src = "https://checkout.razorpay.com/v1/checkout.js";
-          s.onload = () => res();
-          s.onerror = () => rej(new Error("Failed to load Razorpay script"));
-          document.body.appendChild(s);
-        });
-      }
-
-      const rzp = new (window as any).Razorpay({
-        key: order.keyId,
-        amount: order.amount,
-        currency: order.currency,
-        name: "SenseFlow Water",
-        description: `Invoice ${order.invoiceNumber}`,
-        order_id: order.orderId,
-        prefill: {
-          name: profile?.full_name ?? "",
-          contact: profile?.phone ?? "",
-        },
-        theme: { color: "#2563eb" },
-        handler: async (response: any) => {
-          try {
-            await verifyFn({
-              data: {
-                invoiceId: invId,
-                consumerId,
-                razorpayOrderId: response.razorpay_order_id,
-                razorpayPaymentId: response.razorpay_payment_id,
-                razorpaySignature: response.razorpay_signature,
-              },
-            });
-            toast.success("Payment successful! Invoice marked as paid.");
-            setPayDialog(null);
-            qc.invalidateQueries({ queryKey: ["consumer-invoices"] });
-            qc.invalidateQueries({ queryKey: ["consumer-payment-history"] });
-            qc.invalidateQueries({ queryKey: ["consumer-dashboard"] });
-          } catch (e: any) {
-            toast.error(e?.message ?? "Payment verification failed");
-          } finally {
-            setRazorpayLoading(false);
-          }
-        },
-        modal: { ondismiss: () => setRazorpayLoading(false) },
-      });
-      rzp.open();
-    } catch (e: any) {
-      toast.error(e?.message ?? "Could not initiate payment");
-      setRazorpayLoading(false);
-    }
-  };
 
   return (
     <DashboardLayout
@@ -631,12 +568,11 @@ function ConsumerInvoices() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {/* Invoice PDF print modal */}
+      <InvoicePrintModal
+        invoice={printInvoice}
+        onClose={() => setPrintInvoice(null)}
+      />
     </DashboardLayout>
-
-    {/* Invoice PDF print modal */}
-    <InvoicePrintModal
-      invoice={printInvoice}
-      onClose={() => setPrintInvoice(null)}
-    />
   );
 }
