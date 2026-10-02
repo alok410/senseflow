@@ -130,6 +130,111 @@ export function InvoicePrintModal({ invoice, onClose, orgName = "SenseFlow Water
     printWindow.document.close();
   };
 
+  const buildHtmlContent = () => {
+    if (!printRef.current) return "";
+    const content = printRef.current.innerHTML;
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Invoice – ${invoice?.id?.slice(0, 8).toUpperCase() ?? ""}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #fff;
+      color: #1a1a1a;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    .invoice-wrapper {
+      max-width: 700px;
+      margin: 0 auto;
+      padding: 40px 32px;
+    }
+    .inv-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      border-bottom: 3px solid #2563eb;
+      padding-bottom: 24px;
+      margin-bottom: 28px;
+    }
+    .inv-org { font-size: 22px; font-weight: 700; color: #2563eb; letter-spacing: -0.5px; }
+    .inv-org-sub { font-size: 12px; color: #64748b; margin-top: 2px; }
+    .inv-badge {
+      display: inline-block;
+      padding: 4px 14px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #fff;
+    }
+    .inv-meta {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      margin-bottom: 28px;
+    }
+    .inv-meta-box {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 14px 18px;
+    }
+    .inv-meta-label { font-size: 10px; text-transform: uppercase; color: #94a3b8; font-weight: 600; letter-spacing: 0.8px; margin-bottom: 4px; }
+    .inv-meta-value { font-size: 15px; font-weight: 600; color: #0f172a; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
+    thead tr { background: #2563eb; color: #fff; }
+    thead th { padding: 10px 14px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; font-weight: 600; }
+    tbody tr { border-bottom: 1px solid #f1f5f9; }
+    tbody tr:last-child { border-bottom: none; }
+    tbody td { padding: 11px 14px; font-size: 13px; color: #374151; }
+    tbody td.right { text-align: right; font-weight: 600; }
+    .inv-summary {
+      margin-left: auto;
+      width: 280px;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      overflow: hidden;
+      margin-bottom: 28px;
+    }
+    .inv-summary-row { display: flex; justify-content: space-between; padding: 9px 16px; font-size: 13px; border-bottom: 1px solid #f1f5f9; }
+    .inv-summary-row:last-child { border-bottom: none; background: #eff6ff; font-weight: 700; font-size: 15px; color: #1e40af; }
+    .inv-summary-row .label { color: #64748b; }
+    .inv-footer { border-top: 1px solid #e2e8f0; padding-top: 16px; display: flex; justify-content: space-between; align-items: center; }
+    .inv-footer-note { font-size: 11px; color: #94a3b8; }
+    .inv-id { font-size: 10px; color: #cbd5e1; font-family: monospace; }
+    @media print {
+      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
+  </style>
+</head>
+<body>
+  <div class="invoice-wrapper">
+    ${content}
+  </div>
+</body>
+</html>`;
+  };
+
+  const handleDownload = () => {
+    const html = buildHtmlContent();
+    if (!html) return;
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `Invoice-${invoice?.id?.slice(0, 8).toUpperCase() ?? "INV"}.html`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   if (!invoice) return null;
 
   const statusStr = invoice.status.toUpperCase();
@@ -146,9 +251,13 @@ export function InvoicePrintModal({ invoice, onClose, orgName = "SenseFlow Water
             <p className="text-xs text-muted-foreground">{invId} · {periodStr}</p>
           </div>
           <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" onClick={handleDownload}>
+              <Download className="h-4 w-4 mr-1.5" />
+              Download
+            </Button>
             <Button size="sm" variant="outline" onClick={handlePrint}>
               <Printer className="h-4 w-4 mr-1.5" />
-              Print / Save PDF
+              Print / PDF
             </Button>
             <Button size="sm" variant="ghost" onClick={onClose}>
               <X className="h-4 w-4" />
