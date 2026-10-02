@@ -6,8 +6,9 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import {
   Search, Eye, CheckCircle, Loader2, Plus, RefreshCw,
-  FileText, IndianRupee, AlertTriangle, TrendingUp,
+  FileText, IndianRupee, AlertTriangle, TrendingUp, Download,
 } from "lucide-react";
+import { InvoicePrintModal } from "@/components/InvoicePrintModal";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -60,6 +61,7 @@ function AdminInvoices() {
   const [viewing, setViewing] = useState<InvoiceRow | null>(null);
   const [payDialog, setPayDialog] = useState<InvoiceRow | null>(null);
   const [genOpen, setGenOpen] = useState(false);
+  const [printInvoice, setPrintInvoice] = useState<InvoiceRow | null>(null);
   const [notes, setNotes] = useState("");
   const [method, setMethod] = useState<"manual" | "online" | "prepaid_recharge">("manual");
 
@@ -285,6 +287,9 @@ function AdminInvoices() {
                         <Button size="sm" variant="ghost" onClick={() => setViewing(i)}>
                           <Eye className="h-3.5 w-3.5" />
                         </Button>
+                        <Button size="sm" variant="ghost" onClick={() => setPrintInvoice(i)} title="Download PDF">
+                          <Download className="h-3.5 w-3.5 text-blue-600" />
+                        </Button>
                         {i.status !== "paid" && (
                           <Button size="sm" variant="ghost" onClick={() => { setPayDialog(i); setNotes(""); setMethod("manual"); }}>
                             <CheckCircle className="h-3.5 w-3.5 text-green-600" />
@@ -336,6 +341,12 @@ function AdminInvoices() {
                 {viewing.paid_at && (
                   <div className="col-span-2"><p className="text-xs text-muted-foreground">Paid at</p><p>{format(new Date(viewing.paid_at), "dd MMM yyyy, hh:mm a")}</p></div>
                 )}
+                <div className="col-span-2 pt-2">
+                  <Button size="sm" variant="outline" onClick={() => { setPrintInvoice(viewing); setViewing(null); }}>
+                    <Download className="mr-2 h-4 w-4" />
+                    Download PDF
+                  </Button>
+                </div>
               </div>
             </div>
           )}
@@ -431,6 +442,12 @@ function AdminInvoices() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Invoice PDF print modal */}
+      <InvoicePrintModal
+        invoice={printInvoice}
+        onClose={() => setPrintInvoice(null)}
+      />
     </DashboardLayout>
   );
 }

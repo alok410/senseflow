@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import {
   FileText, CreditCard, Wallet, History, CheckCircle2, Clock, AlertTriangle,
-  Loader2, IndianRupee, ExternalLink, Search,
+  Loader2, IndianRupee, Search, Download,
 } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -25,12 +25,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useSession, useMyProfile } from "@/hooks/use-session";
 import { CONSUMER_NAV } from "@/lib/nav";
 import { listInvoices, payInvoiceFromPrepaid, type InvoiceRow } from "@/lib/invoices.functions";
-import {
-  createRazorpayOrder,
-  verifyRazorpayPayment,
-  getConsumerPaymentHistory,
-  type PaymentHistoryRow,
-} from "@/lib/razorpay.functions";
+import { getConsumerPaymentHistory, type PaymentHistoryRow } from "@/lib/razorpay.functions";
+import { InvoicePrintModal } from "@/components/InvoicePrintModal";
 
 const ALL = "all";
 
@@ -68,16 +64,14 @@ function ConsumerInvoices() {
 
   const listFn = useServerFn(listInvoices);
   const payPrepaidFn = useServerFn(payInvoiceFromPrepaid);
-  const createOrderFn = useServerFn(createRazorpayOrder);
-  const verifyFn = useServerFn(verifyRazorpayPayment);
   const getHistoryFn = useServerFn(getConsumerPaymentHistory);
 
   const [statusFilter, setStatusFilter] = useState(ALL);
   const [search, setSearch] = useState("");
   const [payDialog, setPayDialog] = useState<InvoiceRow | null>(null);
   const [viewing, setViewing] = useState<InvoiceRow | null>(null);
-  const [payMethod, setPayMethod] = useState<"online" | "prepaid">("online");
-  const [razorpayLoading, setRazorpayLoading] = useState(false);
+  const [printInvoice, setPrintInvoice] = useState<InvoiceRow | null>(null);
+  const [payMethod, setPayMethod] = useState<"online" | "prepaid">("prepaid");
 
   const invoices = useQuery({
     queryKey: ["consumer-invoices", user?.id, statusFilter],
@@ -341,16 +335,19 @@ function ConsumerInvoices() {
                             <Button size="sm" variant="ghost" onClick={() => setViewing(i)}>
                               View
                             </Button>
+                            <Button size="sm" variant="ghost" onClick={() => setPrintInvoice(i)} title="Download PDF">
+                              <Download className="h-3.5 w-3.5 text-blue-600" />
+                            </Button>
                             {i.status !== "paid" && (
                               <Button
                                 size="sm"
                                 className="ml-1"
                                 onClick={() => {
                                   setPayDialog(i);
-                                  setPayMethod("online");
+                                  setPayMethod("prepaid");
                                 }}
                               >
-                                <CreditCard className="mr-1 h-3 w-3" />
+                                <Wallet className="mr-1 h-3 w-3" />
                                 Pay
                               </Button>
                             )}
@@ -512,14 +509,32 @@ function ConsumerInvoices() {
               {viewing.status !== "paid" && (
                 <DialogFooter>
                   <Button
+                    variant="outline"
+                    onClick={() => { setPrintInvoice(viewing); setViewing(null); }}
+                  >
+                    <Download className="mr-2 h-4 w-4" />
+                    Download PDF
+                  </Button>
+                  <Button
                     onClick={() => {
                       setViewing(null);
                       setPayDialog(viewing);
-                      setPayMethod("online");
+                      setPayMethod("prepaid");
                     }}
                   >
-                    <CreditCard className="mr-2 h-4 w-4" />
+                    <Wallet className="mr-2 h-4 w-4" />
                     Pay now
+                  </Button>
+                </DialogFooter>
+              )}
+              {viewing.status === "paid" && (
+                <DialogFooter>
+                  <Button
+                    variant="outline"
+                    onClick={() => { setPrintInvoice(viewing); setViewing(null); }}
+                  >
+                    <Download className="mr-2 h-4 w-4" />
+                    Download PDF
                   </Button>
                 </DialogFooter>
               )}
@@ -558,15 +573,12 @@ function ConsumerInvoices() {
                 </TabsTrigger>
               </TabsList>
               <TabsContent value="online" className="mt-3">
-                <div className="rounded-lg border p-3 text-sm space-y-1">
-                  <p className="font-medium">Pay via Razorpay</p>
+                <div className="rounded-lg border border-dashed p-4 text-sm text-center space-y-1">
+                  <CreditCard className="mx-auto h-7 w-7 text-muted-foreground mb-2" />
+                  <p className="font-medium text-muted-foreground">Online payment coming soon</p>
                   <p className="text-xs text-muted-foreground">
-                    Secure payment \u2014 UPI, cards, net banking and wallets
+                    Use your prepaid balance to pay this invoice, or ask your administrator to mark it paid manually.
                   </p>
-                  <div className="flex gap-2 pt-1 items-center">
-                    <ExternalLink className="h-3 w-3 text-muted-foreground" />
-                    <p className="text-xs text-muted-foreground">Powered by Razorpay</p>
-                  </div>
                 </div>
               </TabsContent>
               <TabsContent value="prepaid" className="mt-3">
@@ -602,13 +614,9 @@ function ConsumerInvoices() {
               Cancel
             </Button>
             {payMethod === "online" ? (
-              <Button onClick={handleRazorpayPay} disabled={razorpayLoading}>
-                {razorpayLoading ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <CreditCard className="mr-2 h-4 w-4" />
-                )}
-                Pay with Razorpay
+              <Button variant="outline" disabled className="opacity-50">
+                <CreditCard className="mr-2 h-4 w-4" />
+                Coming soon
               </Button>
             ) : (
               <Button
@@ -624,5 +632,11 @@ function ConsumerInvoices() {
         </DialogContent>
       </Dialog>
     </DashboardLayout>
+
+    {/* Invoice PDF print modal */}
+    <InvoicePrintModal
+      invoice={printInvoice}
+      onClose={() => setPrintInvoice(null)}
+    />
   );
 }
