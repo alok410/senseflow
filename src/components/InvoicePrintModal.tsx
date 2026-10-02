@@ -1,8 +1,9 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { format } from "date-fns";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Download, Printer, X } from "lucide-react";
+import { Download, Printer, X, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import type { InvoiceRow } from "@/lib/invoices.functions";
 
 interface InvoicePrintModalProps {
@@ -22,6 +23,7 @@ function statusColor(s: string) {
 
 export function InvoicePrintModal({ invoice, onClose, orgName = "SenseFlow Water" }: InvoicePrintModalProps) {
   const printRef = useRef<HTMLDivElement>(null);
+  const [downloading, setDownloading] = useState(false);
 
   const handlePrint = () => {
     if (!printRef.current) return;
@@ -130,44 +132,45 @@ export function InvoicePrintModal({ invoice, onClose, orgName = "SenseFlow Water
     printWindow.document.close();
   };
 
-  const buildHtmlContent = () => {
+  const invFileName = `Invoice-${invoice?.id?.slice(0, 8).toUpperCase() ?? "INV"}`;
+
+  const getFullHtml = (autoprint: boolean) => {
     if (!printRef.current) return "";
     const content = printRef.current.innerHTML;
+    const orgStr = orgName;
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Invoice – ${invoice?.id?.slice(0, 8).toUpperCase() ?? ""}</title>
+  <title>${invFileName}</title>
   <style>
+    @page { size: A4; margin: 1.2cm 1.4cm; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       font-family: 'Segoe UI', Arial, sans-serif;
       background: #fff;
       color: #1a1a1a;
-      font-size: 14px;
+      font-size: 13px;
       line-height: 1.5;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
     }
-    .invoice-wrapper {
-      max-width: 700px;
-      margin: 0 auto;
-      padding: 40px 32px;
-    }
+    .invoice-wrapper { max-width: 100%; padding: 0; }
     .inv-header {
       display: flex;
       justify-content: space-between;
       align-items: flex-start;
       border-bottom: 3px solid #2563eb;
-      padding-bottom: 24px;
-      margin-bottom: 28px;
+      padding-bottom: 20px;
+      margin-bottom: 24px;
     }
-    .inv-org { font-size: 22px; font-weight: 700; color: #2563eb; letter-spacing: -0.5px; }
-    .inv-org-sub { font-size: 12px; color: #64748b; margin-top: 2px; }
+    .inv-org { font-size: 20px; font-weight: 700; color: #2563eb; letter-spacing: -0.5px; }
+    .inv-org-sub { font-size: 11px; color: #64748b; margin-top: 2px; }
     .inv-badge {
       display: inline-block;
-      padding: 4px 14px;
+      padding: 4px 12px;
       border-radius: 20px;
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 1px;
@@ -176,63 +179,63 @@ export function InvoicePrintModal({ invoice, onClose, orgName = "SenseFlow Water
     .inv-meta {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 20px;
-      margin-bottom: 28px;
+      gap: 16px;
+      margin-bottom: 24px;
     }
     .inv-meta-box {
       background: #f8fafc;
       border: 1px solid #e2e8f0;
-      border-radius: 10px;
-      padding: 14px 18px;
+      border-radius: 8px;
+      padding: 12px 14px;
     }
-    .inv-meta-label { font-size: 10px; text-transform: uppercase; color: #94a3b8; font-weight: 600; letter-spacing: 0.8px; margin-bottom: 4px; }
-    .inv-meta-value { font-size: 15px; font-weight: 600; color: #0f172a; }
-    table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
-    thead tr { background: #2563eb; color: #fff; }
-    thead th { padding: 10px 14px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; font-weight: 600; }
+    .inv-meta-label { font-size: 9px; text-transform: uppercase; color: #94a3b8; font-weight: 600; letter-spacing: 0.8px; margin-bottom: 3px; }
+    .inv-meta-value { font-size: 14px; font-weight: 600; color: #0f172a; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+    thead tr { background: #2563eb !important; color: #fff; }
+    thead th { padding: 9px 12px; text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: 0.8px; font-weight: 600; color: #fff; }
     tbody tr { border-bottom: 1px solid #f1f5f9; }
     tbody tr:last-child { border-bottom: none; }
-    tbody td { padding: 11px 14px; font-size: 13px; color: #374151; }
+    tbody td { padding: 10px 12px; font-size: 12px; color: #374151; }
     tbody td.right { text-align: right; font-weight: 600; }
+    .bg-green-50 { background: #f0fdf4 !important; }
+    .bg-red-50 { background: #fef2f2 !important; }
     .inv-summary {
       margin-left: auto;
-      width: 280px;
+      width: 260px;
       border: 1px solid #e2e8f0;
-      border-radius: 10px;
+      border-radius: 8px;
       overflow: hidden;
-      margin-bottom: 28px;
+      margin-bottom: 24px;
     }
-    .inv-summary-row { display: flex; justify-content: space-between; padding: 9px 16px; font-size: 13px; border-bottom: 1px solid #f1f5f9; }
-    .inv-summary-row:last-child { border-bottom: none; background: #eff6ff; font-weight: 700; font-size: 15px; color: #1e40af; }
-    .inv-summary-row .label { color: #64748b; }
-    .inv-footer { border-top: 1px solid #e2e8f0; padding-top: 16px; display: flex; justify-content: space-between; align-items: center; }
-    .inv-footer-note { font-size: 11px; color: #94a3b8; }
-    .inv-id { font-size: 10px; color: #cbd5e1; font-family: monospace; }
-    @media print {
-      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    }
+    .inv-summary-row { display: flex; justify-content: space-between; padding: 8px 14px; font-size: 12px; border-bottom: 1px solid #f1f5f9; }
+    .inv-summary-row:last-child { border-bottom: none; background: #eff6ff !important; font-weight: 700; font-size: 14px; color: #1e40af; }
+    .inv-footer { border-top: 1px solid #e2e8f0; padding-top: 14px; display: flex; justify-content: space-between; align-items: center; }
+    .inv-footer-note { font-size: 10px; color: #94a3b8; }
   </style>
 </head>
 <body>
   <div class="invoice-wrapper">
     ${content}
   </div>
+  ${autoprint ? "<script>window.onload=function(){window.focus();window.print();}<\/script>" : ""}
 </body>
 </html>`;
   };
 
-  const handleDownload = () => {
-    const html = buildHtmlContent();
-    if (!html) return;
-    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `Invoice-${invoice?.id?.slice(0, 8).toUpperCase() ?? "INV"}.html`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+  const handleDownloadPdf = () => {
+    if (!printRef.current) return;
+    setDownloading(true);
+    const html = getFullHtml(true);
+    const pw = window.open("", "_blank", "width=900,height=700");
+    if (!pw) {
+      toast.error("Popup blocked — please allow popups and try again.");
+      setDownloading(false);
+      return;
+    }
+    pw.document.write(html);
+    pw.document.close();
+    toast.success("Print dialog opened — select \"Save as PDF\" to download.", { duration: 6000 });
+    setTimeout(() => setDownloading(false), 1500);
   };
 
   if (!invoice) return null;
@@ -251,13 +254,21 @@ export function InvoicePrintModal({ invoice, onClose, orgName = "SenseFlow Water
             <p className="text-xs text-muted-foreground">{invId} · {periodStr}</p>
           </div>
           <div className="flex items-center gap-2">
-            <Button size="sm" variant="outline" onClick={handleDownload}>
-              <Download className="h-4 w-4 mr-1.5" />
-              Download
+            <Button
+              size="sm"
+              onClick={handleDownloadPdf}
+              disabled={downloading}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              {downloading
+                ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                : <Download className="h-4 w-4 mr-1.5" />
+              }
+              Download PDF
             </Button>
             <Button size="sm" variant="outline" onClick={handlePrint}>
               <Printer className="h-4 w-4 mr-1.5" />
-              Print / PDF
+              Print
             </Button>
             <Button size="sm" variant="ghost" onClick={onClose}>
               <X className="h-4 w-4" />
