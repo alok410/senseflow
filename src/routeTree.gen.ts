@@ -9,39 +9,39 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as AuthRouteImport } from './routes/auth'
-import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
+import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
-import { Route as AuthenticatedSecretaryIndexRouteImport } from './routes/_authenticated/secretary/index'
+import { Route as AuthenticatedAdminIndexRouteImport } from './routes/_authenticated/admin/index'
+import { Route as AuthenticatedAdminAnalyticsRouteImport } from './routes/_authenticated/admin/analytics'
+import { Route as AuthenticatedAdminConsumersRouteImport } from './routes/_authenticated/admin/consumers'
+import { Route as AuthenticatedAdminInvoicesRouteImport } from './routes/_authenticated/admin/invoices'
+import { Route as AuthenticatedAdminLocationsRouteImport } from './routes/_authenticated/admin/locations'
+import { Route as AuthenticatedAdminMainMeterRouteImport } from './routes/_authenticated/admin/main-meter'
+import { Route as AuthenticatedAdminRatesRouteImport } from './routes/_authenticated/admin/rates'
+import { Route as AuthenticatedAdminSecretariesRouteImport } from './routes/_authenticated/admin/secretaries'
+import { Route as AuthenticatedAdminSettingsRouteImport } from './routes/_authenticated/admin/settings'
+import { Route as AuthenticatedAdminUsersRouteImport } from './routes/_authenticated/admin/users'
 import { Route as AuthenticatedConsumerIndexRouteImport } from './routes/_authenticated/consumer/index'
 import { Route as AuthenticatedConsumerInvoicesRouteImport } from './routes/_authenticated/consumer/invoices'
-import { Route as AuthenticatedAdminIndexRouteImport } from './routes/_authenticated/admin/index'
-import { Route as AuthenticatedSecretaryUsersRouteImport } from './routes/_authenticated/secretary/users'
+import { Route as AuthenticatedSecretaryIndexRouteImport } from './routes/_authenticated/secretary/index'
 import { Route as AuthenticatedSecretaryInvoicesRouteImport } from './routes/_authenticated/secretary/invoices'
-import { Route as AuthenticatedAdminUsersRouteImport } from './routes/_authenticated/admin/users'
-import { Route as AuthenticatedAdminSecretariesRouteImport } from './routes/_authenticated/admin/secretaries'
-import { Route as AuthenticatedAdminRatesRouteImport } from './routes/_authenticated/admin/rates'
-import { Route as AuthenticatedAdminMainMeterRouteImport } from './routes/_authenticated/admin/main-meter'
-import { Route as AuthenticatedAdminLocationsRouteImport } from './routes/_authenticated/admin/locations'
-import { Route as AuthenticatedAdminInvoicesRouteImport } from './routes/_authenticated/admin/invoices'
-import { Route as AuthenticatedAdminConsumersRouteImport } from './routes/_authenticated/admin/consumers'
-import { Route as AuthenticatedAdminAnalyticsRouteImport } from './routes/_authenticated/admin/analytics'
-import { Route as AuthenticatedAdminSettingsRouteImport } from './routes/_authenticated/admin/settings'
+import { Route as AuthenticatedSecretaryUsersRouteImport } from './routes/_authenticated/secretary/users'
 import { Route as AuthenticatedAdminConsumersIdRouteImport } from './routes/_authenticated/admin/consumers.$id'
 
-const AuthRoute = AuthRouteImport.update({
-  id: '/auth',
-  path: '/auth',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedRouteRoute = AuthenticatedRouteRouteImport.update({
   id: '/_authenticated',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const AuthRoute = AuthRouteImport.update({
+  id: '/auth',
+  path: '/auth',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
@@ -49,12 +49,63 @@ const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
-const AuthenticatedSecretaryIndexRoute =
-  AuthenticatedSecretaryIndexRouteImport.update({
-    id: '/secretary/',
-    path: '/secretary/',
+const AuthenticatedAdminIndexRoute = AuthenticatedAdminIndexRouteImport.update({
+  id: '/admin/',
+  path: '/admin/',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedAdminAnalyticsRoute =
+  AuthenticatedAdminAnalyticsRouteImport.update({
+    id: '/admin/analytics',
+    path: '/admin/analytics',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedAdminConsumersRoute =
+  AuthenticatedAdminConsumersRouteImport.update({
+    id: '/admin/consumers',
+    path: '/admin/consumers',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAdminInvoicesRoute =
+  AuthenticatedAdminInvoicesRouteImport.update({
+    id: '/admin/invoices',
+    path: '/admin/invoices',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAdminLocationsRoute =
+  AuthenticatedAdminLocationsRouteImport.update({
+    id: '/admin/locations',
+    path: '/admin/locations',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAdminMainMeterRoute =
+  AuthenticatedAdminMainMeterRouteImport.update({
+    id: '/admin/main-meter',
+    path: '/admin/main-meter',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAdminRatesRoute = AuthenticatedAdminRatesRouteImport.update({
+  id: '/admin/rates',
+  path: '/admin/rates',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedAdminSecretariesRoute =
+  AuthenticatedAdminSecretariesRouteImport.update({
+    id: '/admin/secretaries',
+    path: '/admin/secretaries',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAdminSettingsRoute =
+  AuthenticatedAdminSettingsRouteImport.update({
+    id: '/admin/settings',
+    path: '/admin/settings',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedAdminUsersRoute = AuthenticatedAdminUsersRouteImport.update({
+  id: '/admin/users',
+  path: '/admin/users',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedConsumerIndexRoute =
   AuthenticatedConsumerIndexRouteImport.update({
     id: '/consumer/',
@@ -67,15 +118,10 @@ const AuthenticatedConsumerInvoicesRoute =
     path: '/consumer/invoices',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
-const AuthenticatedAdminIndexRoute = AuthenticatedAdminIndexRouteImport.update({
-  id: '/admin/',
-  path: '/admin/',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-const AuthenticatedSecretaryUsersRoute =
-  AuthenticatedSecretaryUsersRouteImport.update({
-    id: '/secretary/users',
-    path: '/secretary/users',
+const AuthenticatedSecretaryIndexRoute =
+  AuthenticatedSecretaryIndexRouteImport.update({
+    id: '/secretary/',
+    path: '/secretary/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedSecretaryInvoicesRoute =
@@ -84,56 +130,10 @@ const AuthenticatedSecretaryInvoicesRoute =
     path: '/secretary/invoices',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
-const AuthenticatedAdminUsersRoute = AuthenticatedAdminUsersRouteImport.update({
-  id: '/admin/users',
-  path: '/admin/users',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-const AuthenticatedAdminSecretariesRoute =
-  AuthenticatedAdminSecretariesRouteImport.update({
-    id: '/admin/secretaries',
-    path: '/admin/secretaries',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
-const AuthenticatedAdminRatesRoute = AuthenticatedAdminRatesRouteImport.update({
-  id: '/admin/rates',
-  path: '/admin/rates',
-  getParentRoute: () => AuthenticatedRouteRoute,
-} as any)
-const AuthenticatedAdminMainMeterRoute =
-  AuthenticatedAdminMainMeterRouteImport.update({
-    id: '/admin/main-meter',
-    path: '/admin/main-meter',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
-const AuthenticatedAdminLocationsRoute =
-  AuthenticatedAdminLocationsRouteImport.update({
-    id: '/admin/locations',
-    path: '/admin/locations',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
-const AuthenticatedAdminInvoicesRoute =
-  AuthenticatedAdminInvoicesRouteImport.update({
-    id: '/admin/invoices',
-    path: '/admin/invoices',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
-const AuthenticatedAdminConsumersRoute =
-  AuthenticatedAdminConsumersRouteImport.update({
-    id: '/admin/consumers',
-    path: '/admin/consumers',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
-const AuthenticatedAdminAnalyticsRoute =
-  AuthenticatedAdminAnalyticsRouteImport.update({
-    id: '/admin/analytics',
-    path: '/admin/analytics',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
-const AuthenticatedAdminSettingsRoute =
-  AuthenticatedAdminSettingsRouteImport.update({
-    id: '/admin/settings',
-    path: '/admin/settings',
+const AuthenticatedSecretaryUsersRoute =
+  AuthenticatedSecretaryUsersRouteImport.update({
+    id: '/secretary/users',
+    path: '/secretary/users',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedAdminConsumersIdRoute =
@@ -148,17 +148,17 @@ export interface FileRoutesByFullPath {
   '/auth': typeof AuthRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/admin/analytics': typeof AuthenticatedAdminAnalyticsRoute
-  '/admin/settings': typeof AuthenticatedAdminSettingsRoute
   '/admin/consumers': typeof AuthenticatedAdminConsumersRouteWithChildren
   '/admin/invoices': typeof AuthenticatedAdminInvoicesRoute
   '/admin/locations': typeof AuthenticatedAdminLocationsRoute
   '/admin/main-meter': typeof AuthenticatedAdminMainMeterRoute
   '/admin/rates': typeof AuthenticatedAdminRatesRoute
   '/admin/secretaries': typeof AuthenticatedAdminSecretariesRoute
+  '/admin/settings': typeof AuthenticatedAdminSettingsRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
-  '/secretary/users': typeof AuthenticatedSecretaryUsersRoute
-  '/secretary/invoices': typeof AuthenticatedSecretaryInvoicesRoute
   '/consumer/invoices': typeof AuthenticatedConsumerInvoicesRoute
+  '/secretary/invoices': typeof AuthenticatedSecretaryInvoicesRoute
+  '/secretary/users': typeof AuthenticatedSecretaryUsersRoute
   '/admin/': typeof AuthenticatedAdminIndexRoute
   '/consumer/': typeof AuthenticatedConsumerIndexRoute
   '/secretary/': typeof AuthenticatedSecretaryIndexRoute
@@ -169,17 +169,17 @@ export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/admin/analytics': typeof AuthenticatedAdminAnalyticsRoute
-  '/admin/settings': typeof AuthenticatedAdminSettingsRoute
   '/admin/consumers': typeof AuthenticatedAdminConsumersRouteWithChildren
   '/admin/invoices': typeof AuthenticatedAdminInvoicesRoute
   '/admin/locations': typeof AuthenticatedAdminLocationsRoute
   '/admin/main-meter': typeof AuthenticatedAdminMainMeterRoute
   '/admin/rates': typeof AuthenticatedAdminRatesRoute
   '/admin/secretaries': typeof AuthenticatedAdminSecretariesRoute
+  '/admin/settings': typeof AuthenticatedAdminSettingsRoute
   '/admin/users': typeof AuthenticatedAdminUsersRoute
-  '/secretary/users': typeof AuthenticatedSecretaryUsersRoute
-  '/secretary/invoices': typeof AuthenticatedSecretaryInvoicesRoute
   '/consumer/invoices': typeof AuthenticatedConsumerInvoicesRoute
+  '/secretary/invoices': typeof AuthenticatedSecretaryInvoicesRoute
+  '/secretary/users': typeof AuthenticatedSecretaryUsersRoute
   '/admin': typeof AuthenticatedAdminIndexRoute
   '/consumer': typeof AuthenticatedConsumerIndexRoute
   '/secretary': typeof AuthenticatedSecretaryIndexRoute
@@ -192,17 +192,17 @@ export interface FileRoutesById {
   '/auth': typeof AuthRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/admin/analytics': typeof AuthenticatedAdminAnalyticsRoute
-  '/_authenticated/admin/settings': typeof AuthenticatedAdminSettingsRoute
   '/_authenticated/admin/consumers': typeof AuthenticatedAdminConsumersRouteWithChildren
   '/_authenticated/admin/invoices': typeof AuthenticatedAdminInvoicesRoute
   '/_authenticated/admin/locations': typeof AuthenticatedAdminLocationsRoute
   '/_authenticated/admin/main-meter': typeof AuthenticatedAdminMainMeterRoute
   '/_authenticated/admin/rates': typeof AuthenticatedAdminRatesRoute
   '/_authenticated/admin/secretaries': typeof AuthenticatedAdminSecretariesRoute
+  '/_authenticated/admin/settings': typeof AuthenticatedAdminSettingsRoute
   '/_authenticated/admin/users': typeof AuthenticatedAdminUsersRoute
-  '/_authenticated/secretary/users': typeof AuthenticatedSecretaryUsersRoute
-  '/_authenticated/secretary/invoices': typeof AuthenticatedSecretaryInvoicesRoute
   '/_authenticated/consumer/invoices': typeof AuthenticatedConsumerInvoicesRoute
+  '/_authenticated/secretary/invoices': typeof AuthenticatedSecretaryInvoicesRoute
+  '/_authenticated/secretary/users': typeof AuthenticatedSecretaryUsersRoute
   '/_authenticated/admin/': typeof AuthenticatedAdminIndexRoute
   '/_authenticated/consumer/': typeof AuthenticatedConsumerIndexRoute
   '/_authenticated/secretary/': typeof AuthenticatedSecretaryIndexRoute
@@ -215,17 +215,17 @@ export interface FileRouteTypes {
     | '/auth'
     | '/dashboard'
     | '/admin/analytics'
-    | '/admin/settings'
     | '/admin/consumers'
     | '/admin/invoices'
     | '/admin/locations'
     | '/admin/main-meter'
     | '/admin/rates'
     | '/admin/secretaries'
+    | '/admin/settings'
     | '/admin/users'
-    | '/secretary/users'
-    | '/secretary/invoices'
     | '/consumer/invoices'
+    | '/secretary/invoices'
+    | '/secretary/users'
     | '/admin/'
     | '/consumer/'
     | '/secretary/'
@@ -236,17 +236,17 @@ export interface FileRouteTypes {
     | '/auth'
     | '/dashboard'
     | '/admin/analytics'
-    | '/admin/settings'
     | '/admin/consumers'
     | '/admin/invoices'
     | '/admin/locations'
     | '/admin/main-meter'
     | '/admin/rates'
     | '/admin/secretaries'
+    | '/admin/settings'
     | '/admin/users'
-    | '/secretary/users'
-    | '/secretary/invoices'
     | '/consumer/invoices'
+    | '/secretary/invoices'
+    | '/secretary/users'
     | '/admin'
     | '/consumer'
     | '/secretary'
@@ -258,17 +258,17 @@ export interface FileRouteTypes {
     | '/auth'
     | '/_authenticated/dashboard'
     | '/_authenticated/admin/analytics'
-    | '/_authenticated/admin/settings'
     | '/_authenticated/admin/consumers'
     | '/_authenticated/admin/invoices'
     | '/_authenticated/admin/locations'
     | '/_authenticated/admin/main-meter'
     | '/_authenticated/admin/rates'
     | '/_authenticated/admin/secretaries'
+    | '/_authenticated/admin/settings'
     | '/_authenticated/admin/users'
-    | '/_authenticated/secretary/users'
-    | '/_authenticated/secretary/invoices'
     | '/_authenticated/consumer/invoices'
+    | '/_authenticated/secretary/invoices'
+    | '/_authenticated/secretary/users'
     | '/_authenticated/admin/'
     | '/_authenticated/consumer/'
     | '/_authenticated/secretary/'
@@ -283,11 +283,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/auth': {
-      id: '/auth'
-      path: '/auth'
-      fullPath: '/auth'
-      preLoaderRoute: typeof AuthRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated': {
@@ -297,11 +297,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+    '/auth': {
+      id: '/auth'
+      path: '/auth'
+      fullPath: '/auth'
+      preLoaderRoute: typeof AuthRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/dashboard': {
@@ -311,11 +311,74 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDashboardRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/_authenticated/secretary/': {
-      id: '/_authenticated/secretary/'
-      path: '/secretary'
-      fullPath: '/secretary/'
-      preLoaderRoute: typeof AuthenticatedSecretaryIndexRouteImport
+    '/_authenticated/admin/': {
+      id: '/_authenticated/admin/'
+      path: '/admin'
+      fullPath: '/admin/'
+      preLoaderRoute: typeof AuthenticatedAdminIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/admin/analytics': {
+      id: '/_authenticated/admin/analytics'
+      path: '/admin/analytics'
+      fullPath: '/admin/analytics'
+      preLoaderRoute: typeof AuthenticatedAdminAnalyticsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/admin/consumers': {
+      id: '/_authenticated/admin/consumers'
+      path: '/admin/consumers'
+      fullPath: '/admin/consumers'
+      preLoaderRoute: typeof AuthenticatedAdminConsumersRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/admin/invoices': {
+      id: '/_authenticated/admin/invoices'
+      path: '/admin/invoices'
+      fullPath: '/admin/invoices'
+      preLoaderRoute: typeof AuthenticatedAdminInvoicesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/admin/locations': {
+      id: '/_authenticated/admin/locations'
+      path: '/admin/locations'
+      fullPath: '/admin/locations'
+      preLoaderRoute: typeof AuthenticatedAdminLocationsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/admin/main-meter': {
+      id: '/_authenticated/admin/main-meter'
+      path: '/admin/main-meter'
+      fullPath: '/admin/main-meter'
+      preLoaderRoute: typeof AuthenticatedAdminMainMeterRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/admin/rates': {
+      id: '/_authenticated/admin/rates'
+      path: '/admin/rates'
+      fullPath: '/admin/rates'
+      preLoaderRoute: typeof AuthenticatedAdminRatesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/admin/secretaries': {
+      id: '/_authenticated/admin/secretaries'
+      path: '/admin/secretaries'
+      fullPath: '/admin/secretaries'
+      preLoaderRoute: typeof AuthenticatedAdminSecretariesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/admin/settings': {
+      id: '/_authenticated/admin/settings'
+      path: '/admin/settings'
+      fullPath: '/admin/settings'
+      preLoaderRoute: typeof AuthenticatedAdminSettingsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/admin/users': {
+      id: '/_authenticated/admin/users'
+      path: '/admin/users'
+      fullPath: '/admin/users'
+      preLoaderRoute: typeof AuthenticatedAdminUsersRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/consumer/': {
@@ -332,18 +395,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedConsumerInvoicesRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/_authenticated/admin/': {
-      id: '/_authenticated/admin/'
-      path: '/admin'
-      fullPath: '/admin/'
-      preLoaderRoute: typeof AuthenticatedAdminIndexRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/secretary/users': {
-      id: '/_authenticated/secretary/users'
-      path: '/secretary/users'
-      fullPath: '/secretary/users'
-      preLoaderRoute: typeof AuthenticatedSecretaryUsersRouteImport
+    '/_authenticated/secretary/': {
+      id: '/_authenticated/secretary/'
+      path: '/secretary'
+      fullPath: '/secretary/'
+      preLoaderRoute: typeof AuthenticatedSecretaryIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/secretary/invoices': {
@@ -353,67 +409,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSecretaryInvoicesRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
-    '/_authenticated/admin/users': {
-      id: '/_authenticated/admin/users'
-      path: '/admin/users'
-      fullPath: '/admin/users'
-      preLoaderRoute: typeof AuthenticatedAdminUsersRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/admin/secretaries': {
-      id: '/_authenticated/admin/secretaries'
-      path: '/admin/secretaries'
-      fullPath: '/admin/secretaries'
-      preLoaderRoute: typeof AuthenticatedAdminSecretariesRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/admin/rates': {
-      id: '/_authenticated/admin/rates'
-      path: '/admin/rates'
-      fullPath: '/admin/rates'
-      preLoaderRoute: typeof AuthenticatedAdminRatesRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/admin/main-meter': {
-      id: '/_authenticated/admin/main-meter'
-      path: '/admin/main-meter'
-      fullPath: '/admin/main-meter'
-      preLoaderRoute: typeof AuthenticatedAdminMainMeterRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/admin/locations': {
-      id: '/_authenticated/admin/locations'
-      path: '/admin/locations'
-      fullPath: '/admin/locations'
-      preLoaderRoute: typeof AuthenticatedAdminLocationsRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/admin/invoices': {
-      id: '/_authenticated/admin/invoices'
-      path: '/admin/invoices'
-      fullPath: '/admin/invoices'
-      preLoaderRoute: typeof AuthenticatedAdminInvoicesRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/admin/consumers': {
-      id: '/_authenticated/admin/consumers'
-      path: '/admin/consumers'
-      fullPath: '/admin/consumers'
-      preLoaderRoute: typeof AuthenticatedAdminConsumersRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/admin/analytics': {
-      id: '/_authenticated/admin/analytics'
-      path: '/admin/analytics'
-      fullPath: '/admin/analytics'
-      preLoaderRoute: typeof AuthenticatedAdminAnalyticsRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/admin/settings': {
-      id: '/_authenticated/admin/settings'
-      path: '/admin/settings'
-      fullPath: '/admin/settings'
-      preLoaderRoute: typeof AuthenticatedAdminSettingsRouteImport
+    '/_authenticated/secretary/users': {
+      id: '/_authenticated/secretary/users'
+      path: '/secretary/users'
+      fullPath: '/secretary/users'
+      preLoaderRoute: typeof AuthenticatedSecretaryUsersRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/admin/consumers/$id': {
@@ -443,17 +443,17 @@ const AuthenticatedAdminConsumersRouteWithChildren =
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedAdminAnalyticsRoute: typeof AuthenticatedAdminAnalyticsRoute
-  AuthenticatedAdminSettingsRoute: typeof AuthenticatedAdminSettingsRoute
   AuthenticatedAdminConsumersRoute: typeof AuthenticatedAdminConsumersRouteWithChildren
   AuthenticatedAdminInvoicesRoute: typeof AuthenticatedAdminInvoicesRoute
   AuthenticatedAdminLocationsRoute: typeof AuthenticatedAdminLocationsRoute
   AuthenticatedAdminMainMeterRoute: typeof AuthenticatedAdminMainMeterRoute
   AuthenticatedAdminRatesRoute: typeof AuthenticatedAdminRatesRoute
   AuthenticatedAdminSecretariesRoute: typeof AuthenticatedAdminSecretariesRoute
+  AuthenticatedAdminSettingsRoute: typeof AuthenticatedAdminSettingsRoute
   AuthenticatedAdminUsersRoute: typeof AuthenticatedAdminUsersRoute
-  AuthenticatedSecretaryUsersRoute: typeof AuthenticatedSecretaryUsersRoute
-  AuthenticatedSecretaryInvoicesRoute: typeof AuthenticatedSecretaryInvoicesRoute
   AuthenticatedConsumerInvoicesRoute: typeof AuthenticatedConsumerInvoicesRoute
+  AuthenticatedSecretaryInvoicesRoute: typeof AuthenticatedSecretaryInvoicesRoute
+  AuthenticatedSecretaryUsersRoute: typeof AuthenticatedSecretaryUsersRoute
   AuthenticatedAdminIndexRoute: typeof AuthenticatedAdminIndexRoute
   AuthenticatedConsumerIndexRoute: typeof AuthenticatedConsumerIndexRoute
   AuthenticatedSecretaryIndexRoute: typeof AuthenticatedSecretaryIndexRoute
@@ -462,7 +462,6 @@ interface AuthenticatedRouteRouteChildren {
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedAdminAnalyticsRoute: AuthenticatedAdminAnalyticsRoute,
-  AuthenticatedAdminSettingsRoute: AuthenticatedAdminSettingsRoute,
   AuthenticatedAdminConsumersRoute:
     AuthenticatedAdminConsumersRouteWithChildren,
   AuthenticatedAdminInvoicesRoute: AuthenticatedAdminInvoicesRoute,
@@ -470,10 +469,11 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAdminMainMeterRoute: AuthenticatedAdminMainMeterRoute,
   AuthenticatedAdminRatesRoute: AuthenticatedAdminRatesRoute,
   AuthenticatedAdminSecretariesRoute: AuthenticatedAdminSecretariesRoute,
+  AuthenticatedAdminSettingsRoute: AuthenticatedAdminSettingsRoute,
   AuthenticatedAdminUsersRoute: AuthenticatedAdminUsersRoute,
-  AuthenticatedSecretaryUsersRoute: AuthenticatedSecretaryUsersRoute,
-  AuthenticatedSecretaryInvoicesRoute: AuthenticatedSecretaryInvoicesRoute,
   AuthenticatedConsumerInvoicesRoute: AuthenticatedConsumerInvoicesRoute,
+  AuthenticatedSecretaryInvoicesRoute: AuthenticatedSecretaryInvoicesRoute,
+  AuthenticatedSecretaryUsersRoute: AuthenticatedSecretaryUsersRoute,
   AuthenticatedAdminIndexRoute: AuthenticatedAdminIndexRoute,
   AuthenticatedConsumerIndexRoute: AuthenticatedConsumerIndexRoute,
   AuthenticatedSecretaryIndexRoute: AuthenticatedSecretaryIndexRoute,
