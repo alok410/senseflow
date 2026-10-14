@@ -9,7 +9,7 @@ const createInput = z.object({
   fullName: z.string().trim().min(1).max(120),
   phone: phoneSchema,
   email: z.string().trim().email().max(255).optional().or(z.literal("").transform(() => undefined)),
-  locationId: z.string().uuid().optional().nullable(),
+  locationId: z.string().uuid("Consumer must be associated with a condominium/location"),
   meterId: z.string().trim().max(64).optional(),
   serialNumber: z.string().trim().max(64).optional(),
   deviceId: z.string().trim().max(64).optional(),
@@ -97,7 +97,7 @@ export const createConsumer = createServerFn({ method: "POST" })
       serial_number: data.serialNumber ?? null,
       device_id: data.deviceId ?? null,
       block_id: data.blockId ?? null,
-      location_id: data.locationId ?? null,
+      location_id: data.locationId,
       assigned_secretary_id: data.assignedSecretaryId ?? null,
       connection_date: new Date().toISOString().slice(0, 10),
     }, { onConflict: "user_id" });

@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 
-const roleSchema = z.enum(["admin", "secretary", "consumer"]);
+const roleSchema = z.enum(["admin", "secretary"]);
 const phoneSchema = z.string().trim().regex(/^\+\d{8,15}$/, "Invalid phone (use +<country><number>)");
 const optionalPhone = phoneSchema.optional().or(z.literal("").transform(() => undefined));
 const optionalEmail = z.string().trim().email().max(255).optional().or(z.literal("").transform(() => undefined));

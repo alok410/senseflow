@@ -104,7 +104,7 @@ function AdminConsumersList() {
     fullName: "",
     phone: "",
     email: "",
-    locationId: NONE,
+    locationId: "",
     serialNumber: "",
     deviceId: "",
     blockId: "",
@@ -232,7 +232,7 @@ function AdminConsumersList() {
           fullName: form.fullName,
           phone: form.phone,
           email: form.email || undefined,
-          locationId: form.locationId === NONE ? null : form.locationId,
+          locationId: form.locationId,
           serialNumber: form.serialNumber || undefined,
           deviceId: form.deviceId || undefined,
           blockId: form.blockId || undefined,
@@ -379,6 +379,10 @@ function AdminConsumersList() {
               className="space-y-4"
               onSubmit={(e) => {
                 e.preventDefault();
+                if (!form.locationId) {
+                  toast.error("Please select a condominium/location for this consumer.");
+                  return;
+                }
                 createMut.mutate();
               }}
             >
@@ -409,16 +413,15 @@ function AdminConsumersList() {
                   />
                 </div>
                 <div className="space-y-2 col-span-2">
-                  <Label>Location</Label>
+                  <Label>Location (condominium) <span className="text-red-500">*</span></Label>
                   <Select
                     value={form.locationId}
                     onValueChange={(v) => setForm({ ...form, locationId: v })}
                   >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select location" />
+                    <SelectTrigger className={!form.locationId ? "border-red-300" : ""}>
+                      <SelectValue placeholder="Select condominium" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value={NONE}>— None —</SelectItem>
                       {(locs.data || []).map((l) => (
                         <SelectItem key={l.id} value={l.id}>
                           {l.name} ({l.code})
@@ -426,6 +429,9 @@ function AdminConsumersList() {
                       ))}
                     </SelectContent>
                   </Select>
+                  {!form.locationId && (
+                    <p className="text-xs text-muted-foreground">Each consumer must belong to a condominium.</p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label>Block ID</Label>

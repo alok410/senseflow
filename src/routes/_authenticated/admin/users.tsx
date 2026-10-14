@@ -204,7 +204,6 @@ function AdminUsers() {
               { id: "all", label: "All users" },
               { id: "secretary", label: "Secretaries" },
               { id: "admin", label: "Admins" },
-              { id: "consumer", label: "Consumers" },
             ].map((f) => (
               <Button
                 key={f.id}
@@ -226,7 +225,7 @@ function AdminUsers() {
             <DialogHeader>
               <DialogTitle>Create user</DialogTitle>
               <DialogDescription>
-                Users sign in with their mobile number and a one-time code — no self sign-up. Pick one or more roles.
+                Users sign in with their mobile number and a one-time code — no self sign-up. Pick one or more roles. To add consumers, go to the Consumers page.
               </DialogDescription>
             </DialogHeader>
             <form
