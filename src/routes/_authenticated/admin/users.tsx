@@ -28,7 +28,7 @@ export const Route = createFileRoute("/_authenticated/admin/users")({
   component: AdminUsers,
 });
 
-const ALL_ROLES: AppRole[] = ["admin", "secretary", "consumer"];
+const ALL_ROLES: AppRole[] = ["admin", "secretary"];
 
 type UserRow = {
   id: string;
