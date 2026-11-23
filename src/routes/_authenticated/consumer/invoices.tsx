@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import {
   FileText, CreditCard, Wallet, History, CheckCircle2, Clock, AlertTriangle,
-  Loader2, IndianRupee, Search, Download, CalendarDays,
+  Loader2, IndianRupee, Search, Download, XCircle, Banknote,
 } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -17,207 +17,167 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { supabase } from "@/integrations/supabase/client";
 import { useSession, useMyProfile } from "@/hooks/use-session";
 import { CONSUMER_NAV } from "@/lib/nav";
-import { listInvoices, payInvoiceFromPrepaid, type InvoiceRow } from "@/lib/invoices.functions";
-import { getConsumerPaymentHistory, type PaymentHistoryRow } from "@/lib/razorpay.functions";
+import { getMyInvoices, getMyInvoiceDetail, type InvoiceRow } from "@/lib/invoices.functions";
+import { initiatePayment, simulatePaymentResult, getMyDummyPayments } from "@/lib/payment.functions";
 import { InvoicePrintModal } from "@/components/InvoicePrintModal";
-
-const ALL = "all";
 
 export const Route = createFileRoute("/_authenticated/consumer/invoices")({
   component: ConsumerInvoices,
 });
 
+// ── helpers ──────────────────────────────────────────────────────
 function statusVariant(s: string): "default" | "secondary" | "destructive" | "outline" {
-  if (s === "paid") return "default";
+  if (s === "paid")    return "default";
   if (s === "overdue") return "destructive";
   return "secondary";
 }
-
-function methodLabel(m: string) {
-  if (m === "manual") return "Cash";
-  if (m === "online") return "Online";
-  if (m === "prepaid_recharge") return "Prepaid";
-  return m;
+function statusLabel(s: string) {
+  if (s === "published" || s === "pending" || s === "approved") return "Due";
+  if (s === "paid")    return "Paid";
+  if (s === "overdue") return "Overdue";
+  return s;
 }
-
-function methodIcon(m: string) {
-  if (m === "manual") return <IndianRupee className="h-3 w-3" />;
-  if (m === "online") return <CreditCard className="h-3 w-3" />;
-  if (m === "prepaid_recharge") return <Wallet className="h-3 w-3" />;
-  return null;
-}
-
 const fmtINR = (n: number) =>
-  `\u20b9${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  `₹${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+// ─────────────────────────────────────────────────────────────────
 function ConsumerInvoices() {
   const { user } = useSession();
   const { data: profile } = useMyProfile(user);
   const qc = useQueryClient();
 
-  const listFn = useServerFn(listInvoices);
-  const payPrepaidFn = useServerFn(payInvoiceFromPrepaid);
-  const getHistoryFn = useServerFn(getConsumerPaymentHistory);
+  const getMyInvoicesFn    = useServerFn(getMyInvoices);
+  const getMyInvoiceDetFn  = useServerFn(getMyInvoiceDetail);
+  const initiatePayFn      = useServerFn(initiatePayment);
+  const simulateResultFn   = useServerFn(simulatePaymentResult);
+  const getPayHistoryFn    = useServerFn(getMyDummyPayments);
 
-  const [statusFilter, setStatusFilter] = useState(ALL);
-  const [search, setSearch] = useState("");
-  const [monthFilter, setMonthFilter] = useState(""); // "" = latest 3, "YYYY-MM" = filter by month
-  const [payDialog, setPayDialog] = useState<InvoiceRow | null>(null);
-  const [viewing, setViewing] = useState<InvoiceRow | null>(null);
+  const [search,       setSearch]      = useState("");
   const [printInvoice, setPrintInvoice] = useState<InvoiceRow | null>(null);
-  const [payMethod, setPayMethod] = useState<"online" | "prepaid">("prepaid");
+  const [detailInv,    setDetailInv]   = useState<InvoiceRow | null>(null);
+  const [payDialog,    setPayDialog]   = useState<InvoiceRow | null>(null);
 
-  const invoices = useQuery({
-    queryKey: ["consumer-invoices", user?.id, statusFilter],
-    enabled: !!user,
-    queryFn: async () =>
-      listFn({
-        data: {
-          consumerId: user!.id,
-          status: statusFilter === ALL ? undefined : statusFilter,
-        },
-      }) as Promise<InvoiceRow[]>,
+  // Payment flow state
+  const [currentPayId, setCurrentPayId] = useState<string | null>(null);
+  const [payStep,      setPayStep]      = useState<"checkout" | "result">("checkout");
+  const [payResult,    setPayResult]    = useState<"SUCCESS" | "FAILED" | null>(null);
+  const [payTxRef,     setPayTxRef]     = useState<string | null>(null);
+
+  // ── Queries ───────────────────────────────────────────────────
+  const invoicesQ = useQuery({
+    queryKey: ["my-invoices", user?.id],
+    enabled: !!user?.id,
+    queryFn: () => getMyInvoicesFn({ data: { consumerId: user!.id, pageSize: 50 } }),
   });
 
-  const balance = useQuery({
-    queryKey: ["consumer-balance", user?.id],
-    enabled: !!user,
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("prepaid_balances")
-        .select("balance")
-        .eq("consumer_id", user!.id)
-        .maybeSingle();
-      return Number(data?.balance ?? 0);
-    },
+  const invoiceRows: InvoiceRow[] = (invoicesQ.data as any)?.rows ?? [];
+
+  const payHistoryQ = useQuery({
+    queryKey: ["my-pay-history", user?.id],
+    enabled: !!user?.id,
+    queryFn: () => getPayHistoryFn({ data: { consumerId: user!.id } }),
   });
 
-  const history = useQuery({
-    queryKey: ["consumer-payment-history", user?.id],
-    enabled: !!user,
-    queryFn: async () =>
-      getHistoryFn({ data: { consumerId: user!.id } }) as Promise<PaymentHistoryRow[]>,
-  });
-
-  // All available months derived from invoice data (for the month picker)
-  const availableMonths = useMemo(() => {
-    const months = new Set<string>();
-    for (const inv of invoices.data || []) {
-      months.add(inv.bill_period_start.slice(0, 7)); // "YYYY-MM"
-    }
-    return Array.from(months).sort((a, b) => b.localeCompare(a)); // newest first
-  }, [invoices.data]);
-
-  // Filtered invoices: if monthFilter set → all for that month; else → latest 3
+  // ── Filtered list ─────────────────────────────────────────────
   const filtered = useMemo(() => {
-    let list = invoices.data || [];
-    // Status filter
-    if (statusFilter !== ALL) {
-      list = list.filter((i) => i.status === statusFilter);
-    }
-    // Search
     const q = search.trim().toLowerCase();
-    if (q) {
-      list = list.filter((i) =>
-        i.id.toLowerCase().includes(q) ||
-        (i.bill_period_start || "").includes(q) ||
-        (i.bill_period_end || "").includes(q)
-      );
-    }
-    // Month filter or latest 3
-    if (monthFilter) {
-      list = list.filter((i) => i.bill_period_start.slice(0, 7) === monthFilter);
-    } else if (!q && statusFilter === ALL) {
-      // Default: show latest 3
-      list = list.slice(0, 3);
-    }
-    return list;
-  }, [invoices.data, statusFilter, search, monthFilter]);
+    if (!q) return invoiceRows;
+    return invoiceRows.filter((i) =>
+      (i.invoice_number || "").toLowerCase().includes(q) ||
+      (i.billing_month  || "").includes(q)
+    );
+  }, [invoiceRows, search]);
 
+  // Summary stats
   const stats = useMemo(() => {
-    const all = invoices.data || [];
-    const paid = all.filter((i) => i.status === "paid");
-    const pending = all.filter((i) => i.status === "pending" || i.status === "overdue");
+    const unpaid = invoiceRows.filter((i) => ["published","pending","approved","overdue"].includes(i.status));
+    const paid   = invoiceRows.filter((i) => i.status === "paid");
     return {
-      totalInvoices: all.length,
-      paidCount: paid.length,
-      pendingCount: pending.length,
-      pendingAmount: pending.reduce((s, i) => s + Number(i.total_amount), 0),
-      paidAmount: paid.reduce((s, i) => s + Number(i.total_amount), 0),
+      outstanding: unpaid.reduce((s, i) => s + Number(i.total_amount), 0),
+      unpaidCount: unpaid.length,
+      paidCount:   paid.length,
     };
-  }, [invoices.data]);
+  }, [invoiceRows]);
 
-  const selectedInvoice = payDialog;
-  const canPayWithPrepaid =
-    !!selectedInvoice && (balance.data ?? 0) >= Number(selectedInvoice.total_amount);
-
-  const prepaidMut = useMutation({
-    mutationFn: async () => {
-      if (!selectedInvoice || !user) throw new Error("No invoice selected");
-      return payPrepaidFn({ data: { invoiceId: selectedInvoice.id, consumerId: user.id } });
-    },
+  // ── Mutations ─────────────────────────────────────────────────
+  const initPayMut = useMutation({
+    mutationFn: (inv: InvoiceRow) =>
+      initiatePayFn({ data: { invoiceId: inv.id, consumerId: user!.id } }),
     onSuccess: (r: any) => {
-      toast.success(r.alreadyPaid ? "Already paid." : "Paid from prepaid balance!");
-      setPayDialog(null);
-      qc.invalidateQueries({ queryKey: ["consumer-invoices"] });
-      qc.invalidateQueries({ queryKey: ["consumer-balance"] });
-      qc.invalidateQueries({ queryKey: ["consumer-payment-history"] });
+      if (r.alreadyPaid) { toast.info("This invoice is already paid."); return; }
+      setCurrentPayId(r.paymentId);
+      setPayStep("checkout");
+      setPayResult(null);
     },
-    onError: (e: unknown) => toast.error(e instanceof Error ? e.message : "Payment failed"),
+    onError: (e: any) => toast.error(e.message || "Could not initiate payment"),
   });
 
+  const simulateMut = useMutation({
+    mutationFn: (result: "success" | "failure") =>
+      simulateResultFn({ data: { paymentId: currentPayId!, consumerId: user!.id, result } }),
+    onSuccess: (r: any) => {
+      setPayStep("result");
+      setPayResult(r.status);
+      setPayTxRef(r.transactionRef ?? null);
+      if (r.status === "SUCCESS") {
+        qc.invalidateQueries({ queryKey: ["my-invoices"] });
+        qc.invalidateQueries({ queryKey: ["my-pay-history"] });
+      }
+    },
+    onError: (e: any) => toast.error(e.message || "Failed"),
+  });
 
+  function openPayDialog(inv: InvoiceRow) {
+    setPayDialog(inv);
+    setCurrentPayId(null);
+    setPayStep("checkout");
+    setPayResult(null);
+    setPayTxRef(null);
+    // Auto-initiate
+    initPayMut.mutate(inv);
+  }
+
+  function closePayDialog() {
+    setPayDialog(null);
+    setCurrentPayId(null);
+    setPayStep("checkout");
+    setPayResult(null);
+  }
+
+  // ── Render ────────────────────────────────────────────────────
   return (
-    <DashboardLayout
-      navItems={CONSUMER_NAV}
-      title="My Invoices"
-      userName={profile?.full_name || null}
-      userPhone={profile?.phone || null}
-    >
+    <DashboardLayout navItems={CONSUMER_NAV} title="My Invoices & Payments"
+      userName={profile?.full_name || null} userPhone={profile?.phone || null}>
+
       {/* Summary cards */}
-      <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Card className="border-blue-200 bg-blue-50/60 dark:border-blue-900 dark:bg-blue-950/20">
+      <div className="mb-5 grid gap-3 sm:grid-cols-3">
+        <Card className="border-red-200 bg-red-50/60 dark:bg-red-950/20">
           <CardContent className="flex items-center gap-3 p-4">
-            <FileText className="h-8 w-8 text-blue-600 dark:text-blue-400" />
+            <AlertTriangle className="h-8 w-8 text-red-600" />
+            <div>
+              <p className="text-xs text-muted-foreground">Outstanding</p>
+              <p className="text-lg font-bold">{fmtINR(stats.outstanding)}</p>
+              <p className="text-xs text-muted-foreground">{stats.unpaidCount} invoice(s)</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-green-200 bg-green-50/60 dark:bg-green-950/20">
+          <CardContent className="flex items-center gap-3 p-4">
+            <CheckCircle2 className="h-8 w-8 text-green-600" />
+            <div>
+              <p className="text-xs text-muted-foreground">Paid invoices</p>
+              <p className="text-lg font-bold">{stats.paidCount}</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-blue-200 bg-blue-50/60 dark:bg-blue-950/20">
+          <CardContent className="flex items-center gap-3 p-4">
+            <FileText className="h-8 w-8 text-blue-600" />
             <div>
               <p className="text-xs text-muted-foreground">Total invoices</p>
-              <p className="text-xl font-bold">{stats.totalInvoices}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-green-200 bg-green-50/60 dark:border-green-900 dark:bg-green-950/20">
-          <CardContent className="flex items-center gap-3 p-4">
-            <CheckCircle2 className="h-8 w-8 text-green-600 dark:text-green-400" />
-            <div>
-              <p className="text-xs text-muted-foreground">Paid</p>
-              <p className="text-xl font-bold">{stats.paidCount}</p>
-              <p className="text-xs text-green-600">{fmtINR(stats.paidAmount)}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-yellow-200 bg-yellow-50/60 dark:border-yellow-900 dark:bg-yellow-950/20">
-          <CardContent className="flex items-center gap-3 p-4">
-            <Clock className="h-8 w-8 text-yellow-600 dark:text-yellow-400" />
-            <div>
-              <p className="text-xs text-muted-foreground">Pending / Due</p>
-              <p className="text-xl font-bold">{stats.pendingCount}</p>
-              <p className="text-xs text-yellow-600">{fmtINR(stats.pendingAmount)}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-purple-200 bg-purple-50/60 dark:border-purple-900 dark:bg-purple-950/20">
-          <CardContent className="flex items-center gap-3 p-4">
-            <Wallet className="h-8 w-8 text-purple-600 dark:text-purple-400" />
-            <div>
-              <p className="text-xs text-muted-foreground">Prepaid balance</p>
-              <p className="text-xl font-bold">{fmtINR(balance.data ?? 0)}</p>
+              <p className="text-lg font-bold">{invoiceRows.length}</p>
             </div>
           </CardContent>
         </Card>
@@ -225,219 +185,123 @@ function ConsumerInvoices() {
 
       <Tabs defaultValue="invoices">
         <TabsList className="mb-4">
-          <TabsTrigger value="invoices">
-            <FileText className="mr-2 h-4 w-4" />Invoices
-          </TabsTrigger>
-          <TabsTrigger value="history">
-            <History className="mr-2 h-4 w-4" />Payment history
-          </TabsTrigger>
+          <TabsTrigger value="invoices"><FileText className="mr-2 h-4 w-4" />Invoices</TabsTrigger>
+          <TabsTrigger value="payments"><History className="mr-2 h-4 w-4" />Payment History</TabsTrigger>
         </TabsList>
 
-        {/* Invoices tab */}
+        {/* ── Invoices tab ──────────────────────────────── */}
         <TabsContent value="invoices">
-          {/* Month filter toolbar */}
-          <div className="mb-4 flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-2 flex-1">
-              <CalendarDays className="h-4 w-4 text-muted-foreground shrink-0" />
-              <select
-                className="flex h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring w-44"
-                value={monthFilter}
-                onChange={(e) => { setMonthFilter(e.target.value); setStatusFilter(ALL); setSearch(""); }}
-              >
-                <option value="">Latest 3 invoices</option>
-                {availableMonths.map((ym) => {
-                  const [y, m] = ym.split("-");
-                  const label = new Date(parseInt(y), parseInt(m) - 1, 1).toLocaleString("en-IN", { month: "long", year: "numeric" });
-                  return <option key={ym} value={ym}>{label}</option>;
-                })}
-              </select>
-              {monthFilter && (
-                <button
-                  onClick={() => setMonthFilter("")}
-                  className="text-xs text-muted-foreground underline hover:text-foreground"
-                >
-                  Clear
-                </button>
-              )}
+          <div className="mb-3 flex gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input className="pl-9" placeholder="Search by invoice # or month…" value={search} onChange={(e) => setSearch(e.target.value)} />
             </div>
-            {monthFilter && (
-              <>
-                <div className="relative flex-1 min-w-[180px]">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    className="pl-9"
-                    placeholder="Search…"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                  />
-                </div>
-                <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={ALL}>All statuses</SelectItem>
-                    <SelectItem value="pending">Pending</SelectItem>
-                    <SelectItem value="paid">Paid</SelectItem>
-                    <SelectItem value="overdue">Overdue</SelectItem>
-                  </SelectContent>
-                </Select>
-              </>
-            )}
           </div>
 
-          {/* Latest 3 notice */}
-          {!monthFilter && (
-            <div className="mb-3 flex items-center gap-2 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 px-4 py-2.5 text-sm text-blue-700 dark:text-blue-300">
-              <FileText className="h-4 w-4 shrink-0" />
-              <span>Showing your <strong>latest 3 invoices</strong>. Use the month filter above to view all invoices for any month.</span>
+          {invoicesQ.isLoading ? (
+            <div className="flex items-center justify-center py-20">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
-          )}
-
-          <Card>
-            <CardContent className="p-0">
-              {invoices.isLoading ? (
-                <div className="flex items-center justify-center gap-3 py-16 text-muted-foreground">
-                  <Loader2 className="h-8 w-8 animate-spin" />
-                  <p className="text-sm">Loading invoices…</p>
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Period</TableHead>
-                        <TableHead>Consumption</TableHead>
-                        <TableHead>Amount</TableHead>
-                        <TableHead>Due date</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filtered.map((i) => (
-                        <TableRow key={i.id} className="hover:bg-muted/30 transition-colors">
-                          <TableCell className="text-xs font-medium">
-                            {format(new Date(i.bill_period_start), "dd MMM")} –{" "}
-                            {format(new Date(i.bill_period_end), "dd MMM yyyy")}
-                          </TableCell>
-                          <TableCell>{Number(i.consumption).toLocaleString("en-IN")} L</TableCell>
-                          <TableCell className="font-semibold">{fmtINR(Number(i.total_amount))}</TableCell>
-                          <TableCell className="text-xs">
-                            {format(new Date(i.due_date), "dd MMM yyyy")}
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant={statusVariant(i.status)}>
-                              {i.status === "overdue" && <AlertTriangle className="mr-1 h-3 w-3" />}
-                              {i.status}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <Button size="sm" variant="ghost" onClick={() => setViewing(i)}>
-                              View
-                            </Button>
-                            <Button size="sm" variant="ghost" onClick={() => setPrintInvoice(i)} title="Download PDF">
-                              <Download className="h-3.5 w-3.5 text-blue-600" />
-                            </Button>
-                            {i.status !== "paid" && (
-                              <Button
-                                size="sm"
-                                className="ml-1"
-                                onClick={() => {
-                                  setPayDialog(i);
-                                  setPayMethod("prepaid");
-                                }}
-                              >
-                                <Wallet className="mr-1 h-3 w-3" />
-                                Pay
-                              </Button>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                      {!filtered.length && !invoices.isLoading && (
-                        <TableRow>
-                          <TableCell colSpan={6} className="py-12 text-center text-muted-foreground">
-                            <FileText className="mx-auto mb-2 h-8 w-8 opacity-30" />
-                            <p>No invoices found.</p>
-                          </TableCell>
-                        </TableRow>
+          ) : (
+            <div className="space-y-3">
+              {filtered.map((inv) => (
+                <Card key={inv.id} className="transition-shadow hover:shadow-md">
+                  <CardContent className="flex items-center justify-between gap-4 p-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold">{inv.invoice_number || "Invoice"}</span>
+                        <Badge variant={statusVariant(inv.status)}>{statusLabel(inv.status)}</Badge>
+                        {inv.status === "overdue" && (
+                          <span className="text-xs text-red-600 font-medium">Late fee applied</span>
+                        )}
+                      </div>
+                      <p className="text-sm text-muted-foreground mt-0.5">
+                        {inv.billing_month || inv.bill_period_start?.slice(0,7) || "—"}
+                        {" · "}
+                        {Number(inv.consumption).toLocaleString("en-IN")} L
+                        {inv.due_date && (
+                          <> · Due {format(new Date(inv.due_date), "dd MMM yyyy")}</>
+                        )}
+                      </p>
+                      {inv.paid_at && (
+                        <p className="text-xs text-green-600 mt-0.5">
+                          <CheckCircle2 className="inline h-3 w-3 mr-0.5" />
+                          Paid on {format(new Date(inv.paid_at), "dd MMM yyyy")}
+                        </p>
                       )}
-                    </TableBody>
-                  </Table>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className="text-lg font-bold">{fmtINR(Number(inv.total_amount))}</p>
+                      <div className="mt-1.5 flex gap-1.5 justify-end">
+                        <Button size="sm" variant="outline" onClick={() => setDetailInv(inv)}>
+                          View
+                        </Button>
+                        <Button size="sm" variant="ghost" title="Download PDF" onClick={() => setPrintInvoice(inv)}>
+                          <Download className="h-3.5 w-3.5" />
+                        </Button>
+                        {["published","pending","approved","overdue"].includes(inv.status) && (
+                          <Button size="sm" onClick={() => openPayDialog(inv)} className="bg-green-600 hover:bg-green-700 text-white">
+                            <CreditCard className="mr-1.5 h-3.5 w-3.5" /> Pay Now
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+              {!filtered.length && (
+                <div className="py-16 text-center text-muted-foreground">
+                  <FileText className="mx-auto mb-2 h-8 w-8 opacity-30" />
+                  <p>No invoices yet.</p>
                 </div>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          )}
         </TabsContent>
 
-        {/* Payment history tab */}
-        <TabsContent value="history">
+        {/* ── Payment history tab ───────────────────────── */}
+        <TabsContent value="payments">
           <Card>
             <CardHeader>
-              <CardTitle>Transaction history</CardTitle>
-              <CardDescription>All payment transactions on your account</CardDescription>
+              <CardTitle>Payment History</CardTitle>
+              <CardDescription>All your payment attempts</CardDescription>
             </CardHeader>
             <CardContent className="p-0">
-              {history.isLoading ? (
-                <div className="flex items-center justify-center gap-3 py-16 text-muted-foreground">
-                  <Loader2 className="h-8 w-8 animate-spin" />
-                  <p className="text-sm">Loading history…</p>
+              {payHistoryQ.isLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-6 w-6 animate-spin" />
                 </div>
               ) : (
                 <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Date</TableHead>
-                        <TableHead>Invoice / Type</TableHead>
-                        <TableHead>Method</TableHead>
-                        <TableHead>Amount</TableHead>
-                        <TableHead>Transaction ID</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {(history.data || []).map((p) => (
-                        <TableRow key={p.id}>
-                          <TableCell className="text-xs">
-                            {format(new Date(p.created_at), "dd MMM yyyy, hh:mm a")}
-                          </TableCell>
-                          <TableCell>
-                            {p.invoice_number ? (
-                              <div>
-                                <div className="font-medium text-sm">{p.invoice_number}</div>
-                                {p.bill_period_start && (
-                                  <div className="text-xs text-muted-foreground">
-                                    {format(new Date(p.bill_period_start), "MMM yyyy")}
-                                  </div>
-                                )}
-                              </div>
-                            ) : (
-                              <span className="text-muted-foreground text-xs">Prepaid recharge</span>
-                            )}
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant="outline" className="gap-1">
-                              {methodIcon(p.method)}
-                              {methodLabel(p.method)}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="font-semibold text-green-700 dark:text-green-400">
-                            {fmtINR(p.amount)}
-                          </TableCell>
-                          <TableCell className="text-xs font-mono text-muted-foreground">
-                            {p.razorpay_payment_id || p.transaction_id || "\u2014"}
-                          </TableCell>
-                        </TableRow>
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
+                      <tr>
+                        <th className="px-4 py-3 text-left">Date</th>
+                        <th className="px-4 py-3 text-left">Transaction Ref</th>
+                        <th className="px-4 py-3 text-left">Amount</th>
+                        <th className="px-4 py-3 text-left">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {((payHistoryQ.data as any[]) ?? []).map((p: any) => (
+                        <tr key={p.id} className="hover:bg-muted/30">
+                          <td className="px-4 py-3 text-xs">{format(new Date(p.created_at), "dd MMM yyyy, hh:mm a")}</td>
+                          <td className="px-4 py-3 font-mono text-xs">{p.transaction_ref || "—"}</td>
+                          <td className="px-4 py-3 font-semibold">{fmtINR(Number(p.amount))}</td>
+                          <td className="px-4 py-3">
+                            {p.status === "SUCCESS" && <Badge variant="default"><CheckCircle2 className="mr-1 h-3 w-3" />Success</Badge>}
+                            {p.status === "FAILED"  && <Badge variant="destructive"><XCircle className="mr-1 h-3 w-3" />Failed</Badge>}
+                            {p.status === "INITIATED" && <Badge variant="secondary"><Clock className="mr-1 h-3 w-3" />Pending</Badge>}
+                          </td>
+                        </tr>
                       ))}
-                      {!history.data?.length && !history.isLoading && (
-                        <TableRow>
-                          <TableCell colSpan={5} className="py-12 text-center text-muted-foreground">
-                            <History className="mx-auto mb-2 h-8 w-8 opacity-30" />
-                            <p>No transactions yet.</p>
-                          </TableCell>
-                        </TableRow>
+                      {!((payHistoryQ.data as any[])?.length) && (
+                        <tr>
+                          <td colSpan={4} className="px-4 py-10 text-center text-muted-foreground">No payment history.</td>
+                        </tr>
                       )}
-                    </TableBody>
-                  </Table>
+                    </tbody>
+                  </table>
                 </div>
               )}
             </CardContent>
@@ -445,196 +309,157 @@ function ConsumerInvoices() {
         </TabsContent>
       </Tabs>
 
-      {/* View invoice dialog */}
-      <Dialog open={!!viewing} onOpenChange={(o) => !o && setViewing(null)}>
-        <DialogContent className="sm:max-w-md">
+      {/* ── Invoice detail dialog ─────────────────────────────── */}
+      <Dialog open={!!detailInv} onOpenChange={(o) => !o && setDetailInv(null)}>
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Invoice details</DialogTitle>
-            {viewing && (
-              <DialogDescription>
-                {format(new Date(viewing.bill_period_start), "dd MMM yyyy")} -{" "}
-                {format(new Date(viewing.bill_period_end), "dd MMM yyyy")}
-              </DialogDescription>
-            )}
+            <DialogTitle>{detailInv?.invoice_number || "Invoice"}</DialogTitle>
+            <DialogDescription>
+              {detailInv?.billing_month || detailInv?.bill_period_start?.slice(0,7)}
+            </DialogDescription>
           </DialogHeader>
-          {viewing && (
-            <div className="space-y-4">
-              <div className="rounded-xl border bg-muted/30 p-4 space-y-3">
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div>
-                    <p className="text-xs text-muted-foreground">Consumption</p>
-                    <p className="font-semibold">{Number(viewing.consumption).toLocaleString("en-IN")} L</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Free tier</p>
-                    <p className="font-semibold">{Number(viewing.free_consumption).toLocaleString("en-IN")} L</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Chargeable</p>
-                    <p className="font-semibold">{Number(viewing.chargeable_consumption).toLocaleString("en-IN")} L</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Rate</p>
-                    <p className="font-semibold">\u20b9{Number(viewing.rate_applied).toFixed(4)}/L</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Water charges</p>
-                    <p className="font-semibold">{fmtINR(Number(viewing.amount))}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Late fee</p>
-                    <p className="font-semibold">{fmtINR(Number(viewing.late_fee))}</p>
-                  </div>
+          {detailInv && (
+            <div className="space-y-3 text-sm">
+              <div className="rounded-lg bg-muted/40 p-4 space-y-1.5">
+                <Row label="Period">
+                  {format(new Date(detailInv.bill_period_start), "dd MMM yyyy")} – {format(new Date(detailInv.bill_period_end), "dd MMM yyyy")}
+                </Row>
+                <Row label="Consumption">{Number(detailInv.consumption).toLocaleString("en-IN")} L</Row>
+                <Row label="Free tier">{Number(detailInv.free_consumption).toLocaleString("en-IN")} L</Row>
+                <Row label="Chargeable">{Number(detailInv.chargeable_consumption).toLocaleString("en-IN")} L</Row>
+                <Row label="Rate">₹{Number(detailInv.rate_applied).toFixed(4)}/L</Row>
+                <div className="border-t pt-1.5">
+                  <Row label="Water charge">{fmtINR(Number(detailInv.amount))}</Row>
+                  {Number(detailInv.base_charge) > 0 && <Row label="Base charge">{fmtINR(Number(detailInv.base_charge))}</Row>}
+                  {Number(detailInv.other_charges) > 0 && <Row label="Other charges">{fmtINR(Number(detailInv.other_charges))}</Row>}
+                  {Number(detailInv.arrears) > 0 && <Row label="Arrears">{fmtINR(Number(detailInv.arrears))}</Row>}
+                  {Number(detailInv.late_fee) > 0 && <Row label="Late fee">{fmtINR(Number(detailInv.late_fee))}</Row>}
                 </div>
-                <div className="border-t pt-3 flex items-center justify-between">
-                  <div>
-                    <p className="text-xs text-muted-foreground">Total amount</p>
-                    <p className="text-2xl font-bold">{fmtINR(Number(viewing.total_amount))}</p>
-                  </div>
-                  <Badge variant={statusVariant(viewing.status)} className="text-sm">
-                    {viewing.status}
-                  </Badge>
-                </div>
-                {viewing.paid_at && (
-                  <p className="text-xs text-muted-foreground">
-                    Paid on {format(new Date(viewing.paid_at), "dd MMM yyyy, hh:mm a")}
-                  </p>
-                )}
-                <div>
-                  <p className="text-xs text-muted-foreground">Due date</p>
-                  <p className="text-sm font-medium">{format(new Date(viewing.due_date), "dd MMM yyyy")}</p>
+                <div className="border-t pt-1.5 flex items-center justify-between">
+                  <span className="font-semibold text-muted-foreground">Total</span>
+                  <span className="text-xl font-bold">{fmtINR(Number(detailInv.total_amount))}</span>
                 </div>
               </div>
-              {viewing.status !== "paid" && (
-                <DialogFooter>
-                  <Button
-                    variant="outline"
-                    onClick={() => { setPrintInvoice(viewing); setViewing(null); }}
-                  >
-                    <Download className="mr-2 h-4 w-4" />
-                    Download PDF
-                  </Button>
-                  <Button
-                    onClick={() => {
-                      setViewing(null);
-                      setPayDialog(viewing);
-                      setPayMethod("prepaid");
-                    }}
-                  >
-                    <Wallet className="mr-2 h-4 w-4" />
-                    Pay now
-                  </Button>
-                </DialogFooter>
+              <div className="flex items-center gap-2">
+                <Badge variant={statusVariant(detailInv.status)}>{statusLabel(detailInv.status)}</Badge>
+                <span className="text-xs text-muted-foreground">Due {format(new Date(detailInv.due_date), "dd MMM yyyy")}</span>
+              </div>
+              {detailInv.paid_at && (
+                <p className="text-xs text-green-600">
+                  <CheckCircle2 className="inline h-3 w-3 mr-0.5" />
+                  Paid on {format(new Date(detailInv.paid_at), "dd MMM yyyy, hh:mm a")}
+                </p>
               )}
-              {viewing.status === "paid" && (
-                <DialogFooter>
-                  <Button
-                    variant="outline"
-                    onClick={() => { setPrintInvoice(viewing); setViewing(null); }}
-                  >
-                    <Download className="mr-2 h-4 w-4" />
-                    Download PDF
+              <div className="flex gap-2 pt-1">
+                <Button size="sm" variant="outline" onClick={() => { setPrintInvoice(detailInv); setDetailInv(null); }}>
+                  <Download className="mr-2 h-3.5 w-3.5" /> Download PDF
+                </Button>
+                {["published","pending","approved","overdue"].includes(detailInv.status) && (
+                  <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" onClick={() => { setDetailInv(null); openPayDialog(detailInv); }}>
+                    <CreditCard className="mr-2 h-3.5 w-3.5" /> Pay Now
                   </Button>
-                </DialogFooter>
-              )}
+                )}
+              </div>
             </div>
           )}
         </DialogContent>
       </Dialog>
 
-      {/* Pay invoice dialog */}
-      <Dialog open={!!payDialog} onOpenChange={(o) => !o && setPayDialog(null)}>
+      {/* ── Dummy Checkout dialog ─────────────────────────────── */}
+      <Dialog open={!!payDialog} onOpenChange={(o) => { if (!o) closePayDialog(); }}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>Pay invoice</DialogTitle>
+            <DialogTitle>
+              {payStep === "result" ? (payResult === "SUCCESS" ? "Payment Successful 🎉" : "Payment Failed") : "Checkout"}
+            </DialogTitle>
             <DialogDescription>
-              {payDialog &&
-                `${format(new Date(payDialog.bill_period_start), "MMM yyyy")} \u2014 ${fmtINR(Number(payDialog.total_amount))}`}
+              {payDialog?.invoice_number} · {fmtINR(Number(payDialog?.total_amount || 0))}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="rounded-xl border bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 p-5 text-center">
-              <p className="text-xs text-muted-foreground mb-1">Amount due</p>
-              <p className="text-4xl font-bold text-blue-700 dark:text-blue-300">
-                {fmtINR(Number(payDialog?.total_amount ?? 0))}
-              </p>
+
+          {/* Loading while initiating */}
+          {initPayMut.isPending && (
+            <div className="flex flex-col items-center gap-3 py-8">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <p className="text-sm text-muted-foreground">Preparing checkout…</p>
             </div>
+          )}
 
-            <Tabs value={payMethod} onValueChange={(v) => setPayMethod(v as "online" | "prepaid")}>
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="online">
-                  <CreditCard className="mr-2 h-4 w-4" />
-                  Online
-                </TabsTrigger>
-                <TabsTrigger value="prepaid">
-                  <Wallet className="mr-2 h-4 w-4" />
-                  Prepaid
-                </TabsTrigger>
-              </TabsList>
-              <TabsContent value="online" className="mt-3">
-                <div className="rounded-lg border border-dashed p-4 text-sm text-center space-y-1">
-                  <CreditCard className="mx-auto h-7 w-7 text-muted-foreground mb-2" />
-                  <p className="font-medium text-muted-foreground">Online payment coming soon</p>
-                  <p className="text-xs text-muted-foreground">
-                    Use your prepaid balance to pay this invoice, or ask your administrator to mark it paid manually.
-                  </p>
-                </div>
-              </TabsContent>
-              <TabsContent value="prepaid" className="mt-3">
-                <div className="rounded-lg border p-3 text-sm space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="text-muted-foreground">Available balance</span>
-                    <span className="font-bold text-lg">{fmtINR(balance.data ?? 0)}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-muted-foreground">Invoice amount</span>
-                    <span className="font-semibold">{fmtINR(Number(payDialog?.total_amount ?? 0))}</span>
-                  </div>
-                  {!canPayWithPrepaid && (
-                    <p className="text-xs text-destructive font-medium">
-                      Insufficient balance. Please recharge or use online payment.
-                    </p>
-                  )}
-                  {canPayWithPrepaid && (
-                    <div className="flex justify-between items-center border-t pt-2">
-                      <span className="text-muted-foreground text-xs">Balance after payment</span>
-                      <span className="text-sm font-medium text-green-600">
-                        {fmtINR((balance.data ?? 0) - Number(payDialog?.total_amount ?? 0))}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </TabsContent>
-            </Tabs>
-          </div>
+          {/* Checkout screen */}
+          {!initPayMut.isPending && payStep === "checkout" && currentPayId && (
+            <div className="space-y-4">
+              <div className="rounded-xl border bg-muted/40 p-4 text-center">
+                <p className="text-xs text-muted-foreground mb-1">Amount to Pay</p>
+                <p className="text-3xl font-bold text-primary">{fmtINR(Number(payDialog?.total_amount || 0))}</p>
+                <p className="text-xs text-muted-foreground mt-1">{payDialog?.invoice_number}</p>
+              </div>
+              <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800">
+                🧪 <strong>Demo Mode</strong> — No real money will be charged. Click a button below to simulate the payment result.
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Button
+                  onClick={() => simulateMut.mutate("success")}
+                  disabled={simulateMut.isPending}
+                  className="bg-green-600 hover:bg-green-700 text-white"
+                >
+                  {simulateMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+                  Simulate Success
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={() => simulateMut.mutate("failure")}
+                  disabled={simulateMut.isPending}
+                >
+                  {simulateMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="mr-2 h-4 w-4" />}
+                  Simulate Failure
+                </Button>
+              </div>
+            </div>
+          )}
 
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setPayDialog(null)}>
-              Cancel
-            </Button>
-            {payMethod === "online" ? (
-              <Button variant="outline" disabled className="opacity-50">
-                <CreditCard className="mr-2 h-4 w-4" />
-                Coming soon
-              </Button>
-            ) : (
-              <Button
-                onClick={() => prepaidMut.mutate()}
-                disabled={prepaidMut.isPending || !canPayWithPrepaid}
-              >
-                {prepaidMut.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                <Wallet className="mr-2 h-4 w-4" />
-                Pay from balance
-              </Button>
-            )}
-          </DialogFooter>
+          {/* Result screen */}
+          {payStep === "result" && payResult === "SUCCESS" && (
+            <div className="space-y-4 text-center">
+              <div className="flex justify-center">
+                <div className="rounded-full bg-green-100 p-6">
+                  <CheckCircle2 className="h-12 w-12 text-green-600" />
+                </div>
+              </div>
+              <div>
+                <p className="font-semibold">Payment of {fmtINR(Number(payDialog?.total_amount||0))} received!</p>
+                {payTxRef && <p className="text-xs text-muted-foreground mt-1">Ref: {payTxRef}</p>}
+              </div>
+              <Button onClick={closePayDialog} className="w-full">Done</Button>
+            </div>
+          )}
+          {payStep === "result" && payResult === "FAILED" && (
+            <div className="space-y-4 text-center">
+              <div className="flex justify-center">
+                <div className="rounded-full bg-red-100 p-6">
+                  <XCircle className="h-12 w-12 text-red-600" />
+                </div>
+              </div>
+              <p className="font-semibold text-red-700">Payment failed. Please try again.</p>
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={closePayDialog}>Cancel</Button>
+                <Button className="flex-1" onClick={() => { setPayStep("checkout"); }}>Try Again</Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
-      {/* Invoice PDF print modal */}
-      <InvoicePrintModal
-        invoice={printInvoice}
-        onClose={() => setPrintInvoice(null)}
-      />
+
+      <InvoicePrintModal invoice={printInvoice} onClose={() => setPrintInvoice(null)} />
     </DashboardLayout>
+  );
+}
+
+// Tiny helper component
+function Row({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="font-medium">{children}</span>
+    </div>
   );
 }
