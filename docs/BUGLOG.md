@@ -1,5 +1,13 @@
 # Bug Log
 
+## [v1.0.26] – 2026-11-23 (14:56)
+
+### Fixed
+- Bug: Any signed-in account could read every location.
+  - Cause: The location read policy allowed every authenticated user to see all locations.
+  - Fix: Restricted reads to admins, secretaries assigned to the location, and consumers connected to it.
+  - Files: drizzle/migrations/0004_scope_location_reads_by_role.sql, docs/BUGLOG.md
+
 ## [v1.0.25] – 2026-11-23 (14:50)
 
 ### Fixed

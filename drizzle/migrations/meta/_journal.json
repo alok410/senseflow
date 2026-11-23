@@ -29,6 +29,13 @@
       "when": 1795444502741,
       "tag": "0003_restrict_anonymous_data_reads",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1795445784798,
+      "tag": "0004_scope_location_reads_by_role",
+      "breakpoints": true
     }
   ]
 }
