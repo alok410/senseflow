@@ -1,0 +1,9 @@
+DROP POLICY IF EXISTS anon_read_invoices ON public.invoices;
+DROP POLICY IF EXISTS anon_read_meter_readings ON public.meter_readings;
+DROP POLICY IF EXISTS anon_read_consumer_details ON public.consumer_details;
+DROP POLICY IF EXISTS anon_read_secretary_locations ON public.secretary_locations;
+DROP POLICY IF EXISTS anon_read_payments ON public.payments;
+DROP POLICY IF EXISTS anon_read_prepaid_balances ON public.prepaid_balances;
+DROP POLICY IF EXISTS anon_read_profiles ON public.profiles;
+DROP POLICY IF EXISTS anon_read_user_roles ON public.user_roles;
+DROP POLICY IF EXISTS anon_read_locations ON public.locations;

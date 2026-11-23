@@ -22,6 +22,13 @@
       "when": 1795442191992,
       "tag": "0002_restore_invoice_schema_support",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1795444502741,
+      "tag": "0003_restrict_anonymous_data_reads",
+      "breakpoints": true
     }
   ]
 }

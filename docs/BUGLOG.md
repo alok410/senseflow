@@ -1,5 +1,13 @@
 # Bug Log
 
+## [v1.0.24] – 2026-11-23 (14:34)
+
+### Fixed
+- Bug: Unrestricted public reads exposed billing, meter, assignment, balance, and profile records.
+  - Cause: Anonymous read policies used unconditional access across nine data tables.
+  - Fix: Removed only the nine unrestricted anonymous read policies while retaining signed-in role-scoped rules.
+  - Files: drizzle/migrations/0003_restrict_anonymous_data_reads.sql, drizzle/migrations/meta/_journal.json, drizzle/migrations/meta/0003_snapshot.json, docs/BUGLOG.md
+
 ## [v1.0.23] – 2026-11-23 (13:56)
 
 ### Fixed
