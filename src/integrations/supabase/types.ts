@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.5"
+    PostgrestVersion: "14.18"
   }
   public: {
     Tables: {
@@ -91,65 +91,195 @@ export type Database = {
           },
         ]
       }
+      dummy_payments: {
+        Row: {
+          amount: number
+          consumer_id: string
+          created_at: string
+          failure_reason: string | null
+          id: string
+          invoice_id: string
+          method: string
+          status: string
+          transaction_ref: string
+        }
+        Insert: {
+          amount: number
+          consumer_id: string
+          created_at?: string
+          failure_reason?: string | null
+          id?: string
+          invoice_id: string
+          method?: string
+          status?: string
+          transaction_ref: string
+        }
+        Update: {
+          amount?: number
+          consumer_id?: string
+          created_at?: string
+          failure_reason?: string | null
+          id?: string
+          invoice_id?: string
+          method?: string
+          status?: string
+          transaction_ref?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dummy_payments_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      invoice_audit_log: {
+        Row: {
+          action: string
+          created_at: string
+          id: string
+          invoice_id: string
+          new_value: Json | null
+          note: string | null
+          old_value: Json | null
+          performed_by: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          id?: string
+          invoice_id: string
+          new_value?: Json | null
+          note?: string | null
+          old_value?: Json | null
+          performed_by?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          id?: string
+          invoice_id?: string
+          new_value?: Json | null
+          note?: string | null
+          old_value?: Json | null
+          performed_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoice_audit_log_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       invoices: {
         Row: {
           amount: number
+          approved_at: string | null
+          approved_by: string | null
+          arrears: number
+          base_charge: number
           bill_period_end: string
           bill_period_start: string
+          billing_month: string | null
+          cancel_reason: string | null
+          cancelled_at: string | null
           chargeable_consumption: number
           consumer_id: string
           consumption: number
           created_at: string
+          created_by: string
+          current_reading: number | null
           due_date: string
+          flag_reason: string | null
+          flagged: boolean
           free_consumption: number
           id: string
           invoice_number: string | null
           late_fee: number
           meter_reading_id: string | null
+          other_charges: number
           paid_at: string | null
+          previous_reading: number | null
+          published_at: string | null
           rate_applied: number
           status: Database["public"]["Enums"]["invoice_status"]
           total_amount: number
+          units_consumed: number | null
           updated_at: string
         }
         Insert: {
           amount?: number
+          approved_at?: string | null
+          approved_by?: string | null
+          arrears?: number
+          base_charge?: number
           bill_period_end: string
           bill_period_start: string
+          billing_month?: string | null
+          cancel_reason?: string | null
+          cancelled_at?: string | null
           chargeable_consumption?: number
           consumer_id: string
           consumption?: number
           created_at?: string
+          created_by?: string
+          current_reading?: number | null
           due_date: string
+          flag_reason?: string | null
+          flagged?: boolean
           free_consumption?: number
           id?: string
           invoice_number?: string | null
           late_fee?: number
           meter_reading_id?: string | null
+          other_charges?: number
           paid_at?: string | null
+          previous_reading?: number | null
+          published_at?: string | null
           rate_applied?: number
           status?: Database["public"]["Enums"]["invoice_status"]
           total_amount?: number
+          units_consumed?: number | null
           updated_at?: string
         }
         Update: {
           amount?: number
+          approved_at?: string | null
+          approved_by?: string | null
+          arrears?: number
+          base_charge?: number
           bill_period_end?: string
           bill_period_start?: string
+          billing_month?: string | null
+          cancel_reason?: string | null
+          cancelled_at?: string | null
           chargeable_consumption?: number
           consumer_id?: string
           consumption?: number
           created_at?: string
+          created_by?: string
+          current_reading?: number | null
           due_date?: string
+          flag_reason?: string | null
+          flagged?: boolean
           free_consumption?: number
           id?: string
           invoice_number?: string | null
           late_fee?: number
           meter_reading_id?: string | null
+          other_charges?: number
           paid_at?: string | null
+          previous_reading?: number | null
+          published_at?: string | null
           rate_applied?: number
           status?: Database["public"]["Enums"]["invoice_status"]
           total_amount?: number
+          units_consumed?: number | null
           updated_at?: string
         }
         Relationships: [
@@ -418,6 +548,24 @@ export type Database = {
           },
         ]
       }
+      user_permissions: {
+        Row: {
+          can_approve_invoices: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          can_approve_invoices?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          can_approve_invoices?: boolean
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string
@@ -489,7 +637,14 @@ export type Database = {
     Enums: {
       account_type: "prepaid" | "postpaid"
       app_role: "admin" | "secretary" | "consumer"
-      invoice_status: "pending" | "approved" | "paid" | "overdue"
+      invoice_status:
+        | "pending"
+        | "approved"
+        | "paid"
+        | "overdue"
+        | "draft"
+        | "published"
+        | "cancelled"
       payment_method: "online" | "manual" | "prepaid_recharge"
       reading_source: "smart_meter" | "manual"
     }
@@ -621,7 +776,15 @@ export const Constants = {
     Enums: {
       account_type: ["prepaid", "postpaid"],
       app_role: ["admin", "secretary", "consumer"],
-      invoice_status: ["pending", "approved", "paid", "overdue"],
+      invoice_status: [
+        "pending",
+        "approved",
+        "paid",
+        "overdue",
+        "draft",
+        "published",
+        "cancelled",
+      ],
       payment_method: ["online", "manual", "prepaid_recharge"],
       reading_source: ["smart_meter", "manual"],
     },

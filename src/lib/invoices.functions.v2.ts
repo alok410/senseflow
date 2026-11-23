@@ -1,5 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
+import type { Database, Json } from "@/integrations/supabase/types";
 import { z } from "zod";
+import { canApproveInvoices } from "./invoice-permissions";
 
 // ─────────────────────────────────────────────────────────────────
 // TYPES
@@ -61,8 +63,8 @@ export interface AuditLogRow {
   invoice_id: string;
   action: string;
   performed_by: string | null;
-  old_value: Record<string, unknown> | null;
-  new_value: Record<string, unknown> | null;
+  old_value: Json | null;
+  new_value: Json | null;
   note: string | null;
   created_at: string;
 }
@@ -87,12 +89,29 @@ async function getSettingNum(supabaseAdmin: any, key: string, fallback: number):
   return isNaN(n) ? fallback : n;
 }
 
+async function hasInvoiceApprovalPermission(supabaseAdmin: any, userId: string): Promise<boolean> {
+  const { data: isAdmin, error: roleError } = await supabaseAdmin.rpc("has_role", {
+    _user_id: userId,
+    _role: "admin",
+  });
+  if (roleError) throw new Error(roleError.message);
+  if (isAdmin) return true;
+
+  const { data: permission, error: permissionError } = await supabaseAdmin
+    .from("user_permissions")
+    .select("can_approve_invoices")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (permissionError) throw new Error(permissionError.message);
+  return canApproveInvoices(Boolean(isAdmin), permission?.can_approve_invoices ?? false);
+}
+
 async function writeAudit(
   supabaseAdmin: any,
   invoiceId: string,
   action: string,
   performedBy: string | null,
-  opts?: { oldValue?: unknown; newValue?: unknown; note?: string }
+  opts?: { oldValue?: Json; newValue?: Json; note?: string }
 ) {
   await supabaseAdmin.from("invoice_audit_log").insert({
     invoice_id:   invoiceId,
@@ -440,9 +459,9 @@ export const approveInvoice = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-    // Check permission
-    const { data: perm } = await supabaseAdmin.rpc("can_approve_invoice", { _user_id: data.performedBy });
-    if (!perm) throw new Error("You do not have permission to approve invoices.");
+    if (!(await hasInvoiceApprovalPermission(supabaseAdmin, data.performedBy))) {
+      throw new Error("You do not have permission to approve invoices.");
+    }
 
     const { data: inv, error: iErr } = await supabaseAdmin
       .from("invoices").select("id, status, flagged").eq("id", data.invoiceId).maybeSingle();
@@ -486,8 +505,9 @@ export const bulkApproveInvoices = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
 
-    const { data: perm } = await supabaseAdmin.rpc("can_approve_invoice", { _user_id: data.performedBy });
-    if (!perm) throw new Error("No permission to approve invoices.");
+    if (!(await hasInvoiceApprovalPermission(supabaseAdmin, data.performedBy))) {
+      throw new Error("No permission to approve invoices.");
+    }
 
     let ids = data.invoiceIds ?? [];
 
@@ -580,7 +600,7 @@ export const editInvoiceDraft = createServerFn({ method: "POST" })
     if (!inv) throw new Error("Invoice not found.");
     if (inv.status !== "draft") throw new Error("Only DRAFT invoices can be edited.");
 
-    const patch: Record<string, number> = {};
+    const patch: Database["public"]["Tables"]["invoices"]["Update"] = {};
     if (data.baseCharge   !== undefined) patch.base_charge   = data.baseCharge;
     if (data.otherCharges !== undefined) patch.other_charges = data.otherCharges;
     if (data.lateFee      !== undefined) patch.late_fee      = data.lateFee;
@@ -718,6 +738,10 @@ export const getMyInvoiceDetail = createServerFn({ method: "POST" })
         other_charges: Number(inv.other_charges ?? 0),
         arrears:       Number(inv.arrears       ?? 0),
         flagged:       false,
+        consumer_name: null,
+        consumer_phone: null,
+        block_id: null,
+        location_id: null,
       } as InvoiceRow,
       payments: payments ?? [],
     };

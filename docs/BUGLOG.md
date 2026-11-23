@@ -1,5 +1,13 @@
 # Bug Log
 
+## [v1.0.23] – 2026-11-23 (13:56)
+
+### Fixed
+- Bug: Preview type-check failed in invoice administration and payment flows.
+  - Cause: Invoice handlers referenced invoice fields, status values, approval data, and payment/audit tables missing from the generated database schema; invoice pages also treated list results as untyped arrays.
+  - Fix: Added the missing invoice schema additively, secured new payment, permission, and audit data with row-level protection, aligned approval checks and JSON types, and typed invoice-page results.
+  - Files: drizzle/migrations/0002_restore_invoice_schema_support.sql, src/integrations/supabase/types.ts, src/lib/invoice-permissions.ts, src/lib/invoice-permissions.test.ts, src/lib/invoices.functions.ts, src/lib/invoices.functions.v2.ts, src/routes/_authenticated/admin/invoices.tsx, src/routes/_authenticated/secretary/invoices.tsx, AGENTS.md
+
 ## [v1.0.22] – 2026-10-02 (14:35)
 
 ### Fixed

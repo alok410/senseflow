@@ -15,6 +15,13 @@
       "when": 1790951050179,
       "tag": "0001_app_settings_and_payment_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1795442191992,
+      "tag": "0002_restore_invoice_schema_support",
+      "breakpoints": true
     }
   ]
 }

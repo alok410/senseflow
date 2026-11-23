@@ -77,13 +77,15 @@ function SecretaryInvoices() {
   const list = useQuery({
     queryKey: ["secretary-invoices", user?.id, statusFilter],
     enabled: !!user,
-    queryFn: async () =>
-      listFn({
+    queryFn: async () => {
+      const result = await listFn({
         data: {
           secretaryId: user!.id,
           status: statusFilter === ALL ? undefined : statusFilter,
         },
-      }) as Promise<InvoiceRow[]>,
+      });
+      return result.rows;
+    },
   });
 
   // Consumers managed by this secretary

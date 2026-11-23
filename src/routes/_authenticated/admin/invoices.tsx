@@ -140,7 +140,7 @@ function AdminInvoices() {
     staleTime: 30_000,
   });
 
-  const invoiceRows = (invoicesQ.data as any)?.rows ?? (Array.isArray(invoicesQ.data) ? invoicesQ.data : []) as InvoiceRow[];
+  const invoiceRows: InvoiceRow[] = invoicesQ.data?.rows ?? [];
 
   const locations = useQuery({
     queryKey: ["locations"],
