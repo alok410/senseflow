@@ -1,5 +1,13 @@
 # Bug Log
 
+## [v1.0.25] – 2026-11-23 (14:50)
+
+### Fixed
+- Bug: Main Meter Overview (Today's Usage, This Month, Total Usage) changed when dashboard filters changed.
+  - Cause: The card read from the filtered analytics query, which refetched per date/location/consumer filter.
+  - Fix: Gave the card its own site-wide main-meter query that ignores all dashboard filters.
+  - Files: src/routes/_authenticated/admin/index.tsx, docs/BUGLOG.md
+
 ## [v1.0.24] – 2026-11-23 (14:34)
 
 ### Fixed

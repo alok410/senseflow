@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { supabase } from "@/integrations/supabase/client";
 import { useSession, useMyProfile } from "@/hooks/use-session";
 import { ADMIN_NAV } from "@/lib/nav";
-import { getAdminDashboardStats } from "@/lib/meter.functions";
+import { getAdminDashboardStats, getMainMeterDashboardStats } from "@/lib/meter.functions";
 import { seedDemoConsumers, getAdminConsumersList } from "@/lib/consumers.functions";
 import { WaterDropLoader } from "@/components/WaterDropLoader";
 
@@ -118,6 +118,19 @@ function AdminDashboard() {
     retry: false,
     staleTime: 60_000,
   });
+
+  // Main Meter Overview is site-wide: independent of date/location/consumer filters
+  const getMainMeterFn = useServerFn(getMainMeterDashboardStats);
+  const mainMeterStats = useQuery({
+    queryKey: ["admin-dashboard-main-meter-static"],
+    queryFn: () => {
+      const t = format(new Date(), "yyyy-MM-dd");
+      return getMainMeterFn({ data: { start: t, end: t } });
+    },
+    retry: false,
+    staleTime: 5 * 60_000,
+  });
+  const mm = mainMeterStats.data;
 
   const usersForDropdown = useMemo(() => {
     return (consumers.data || []).filter((c) => locId === ALL || c.locationId === locId);
@@ -244,15 +257,15 @@ function AdminDashboard() {
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="rounded-lg border bg-blue-50/60 dark:bg-blue-950/20 p-4">
               <p className="text-xs text-muted-foreground">Today's Usage</p>
-              <p className="text-2xl font-bold text-blue-700 dark:text-blue-300">{s ? fmtL(s.mainMeter.todaysUsageL) : "—"}</p>
+              <p className="text-2xl font-bold text-blue-700 dark:text-blue-300">{mm ? fmtL(mm.todaysUsageL) : "—"}</p>
             </div>
             <div className="rounded-lg border bg-emerald-50/60 dark:bg-emerald-950/20 p-4">
               <p className="text-xs text-muted-foreground">This Month</p>
-              <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-300">{s ? fmtL(s.mainMeter.thisMonthL) : "—"}</p>
+              <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-300">{mm ? fmtL(mm.thisMonthL) : "—"}</p>
             </div>
             <div className="rounded-lg border bg-purple-50/60 dark:bg-purple-950/20 p-4">
               <p className="text-xs text-muted-foreground">Total Usage</p>
-              <p className="text-2xl font-bold text-purple-700 dark:text-purple-300">{s ? fmtL(s.mainMeter.totalUsageL) : "—"}</p>
+              <p className="text-2xl font-bold text-purple-700 dark:text-purple-300">{mm ? fmtL(mm.totalUsageL) : "—"}</p>
             </div>
           </div>
         </CardContent>
